@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import toast, { Toaster } from 'react-hot-toast';
+import API_URL from '../apiConfig';
 import { 
   LayoutDashboard, Package, Image as ImageIcon, ShoppingCart, 
   Plus, Bell, Search, Filter 
@@ -16,9 +17,9 @@ const Dashboard = () => {
   // ទាញទិន្នន័យពី Server
   const fetchData = async () => {
     try {
-      const res = await fetch('http://localhost:5000/api/data');
-      const result = await res.json();
-      setData(result);
+      const response = await fetch(`${API_URL}/api/data`); 
+      const data = await response.json();
+      setData(data);
     } catch (err) { toast.error("Error loading data"); }
   };
 
