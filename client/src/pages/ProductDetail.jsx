@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import API_URL from '../apiConfig';
 import { 
   ChevronLeft, ShoppingCart, Loader2, X, Phone, MapPin, 
   User, PackagePlus, ChevronRight, Send, Truck, CreditCard, Image as ImageIcon
@@ -15,7 +16,6 @@ const ProductDetail = () => {
   const [activeImg, setActiveImg] = useState(0);
   const [showOrderModal, setShowOrderModal] = useState(false);
 
-  // --- បន្ថែម State ថ្មីសម្រាប់ Payslip ---
   const [payslip, setPayslip] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
 
@@ -28,16 +28,33 @@ const ProductDetail = () => {
     paymentMethod: 'បង់ប្រាក់ផ្ទាល់ (COD)'
   });
 
+  // មុខងារជំនួយសម្រាប់រៀបចំ Link រូបភាពឱ្យត្រឹមត្រូវ
+  const getImageUrl = (img) => {
+    if (!img) return 'https://placehold.co/600x400?text=No+Image';
+    
+    // បើ image ជាប់ localhost ពី database ចាស់ ត្រូវប្តូរទៅ API_URL របស់ Render
+    if (typeof img === 'string' && img.includes('localhost:5000')) {
+      return img.replace('http://localhost:5000', API_URL);
+    }
+    
+    // បើ image ជា path ខ្លី (ឧទាហរណ៍: uploads/abc.jpg)
+    if (typeof img === 'string' && !img.startsWith('http')) {
+      return `${API_URL}/${img}`;
+    }
+    
+    return img;
+  };
+
   useEffect(() => {
     const fetchProduct = async () => {
       try {
-        const res = await fetch('http://localhost:5000/api/data');
-        const data = await res.json();
+        const response = await fetch(`${API_URL}/api/data`); 
+        const data = await response.json();
         const foundProduct = data.products.find(p => p.id.toString() === id);
         setProduct(foundProduct);
         setLoading(false);
       } catch (err) {
-        console.error("Error:", err);
+        console.error("Error fetching product:", err);
         setLoading(false);
       }
     };
@@ -50,7 +67,6 @@ const ProductDetail = () => {
     }
   }, [orderForm.location]);
 
-  // --- បន្ថែមមុខងារ Handle File Change ---
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (file) {
@@ -83,7 +99,6 @@ const ProductDetail = () => {
   const handleOrderSubmit = async (e) => {
     e.preventDefault();
     
-    // បើបង់តាម ABA តែមិនទាន់អាប់ឡូតរូប ត្រូវ Alert ប្រាប់
     if (orderForm.paymentMethod === 'ABA / វីង' && !payslip) {
       alert("សូមមេត្តាអាប់ឡូតរូបភាពវិក្កយបត្របង់ប្រាក់របស់អ្នក!");
       return;
@@ -91,7 +106,6 @@ const ProductDetail = () => {
 
     setIsSubmitting(true);
 
-    // រៀបចំ FormData ដើម្បីផ្ញើទាំង Text និង File ទៅ Server
     const formData = new FormData();
     formData.append('productId', product.id);
     formData.append('productName', product.name);
@@ -110,20 +124,18 @@ const ProductDetail = () => {
     const message = `🌟 **ការកុម្ម៉ង់ថ្មី** 🌟\n👤 ឈ្មោះ: ${orderForm.name}\n📞 ទូរស័ព្ទ: ${orderForm.phone}\n📍 តំបន់: ${orderForm.location}\n🚚 អាសយដ្ឋាន: ${orderForm.address}\n📦 ទំនិញ: ${product.name} (x${orderForm.qty})\n💳 បង់តាម: ${orderForm.paymentMethod}\n💰 **សរុបរួម: $${finalTotal}**`;
 
     try {
-      // ១. ផ្ញើទៅ API Server
-      const res = await fetch('http://localhost:5000/api/orders', {
+      // កែតម្រូវទៅកាន់ API_URL របស់ Render
+      const res = await fetch(`${API_URL}/api/orders`, {
         method: 'POST',
-        body: formData // ផ្ញើជា FormData ជំនួស JSON
+        body: formData 
       });
 
-      // ២. ផ្ញើទៅ Telegram (Text)
       await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ chat_id: chatId, text: message, parse_mode: 'Markdown' })
       });
 
-      // ៣. ផ្ញើរូបភាព Payslip ទៅ Telegram បើមាន
       if (payslip) {
         const teleFormData = new FormData();
         teleFormData.append('chat_id', chatId);
@@ -141,7 +153,7 @@ const ProductDetail = () => {
         navigate('/');
       }
     } catch (err) {
-      alert("មានបញ្ហាភ្ជាប់ទៅកាន់ Server");
+      alert("មានបញ្ហាភ្ជាប់ទៅកាន់ Server: " + err.message);
     } finally {
       setIsSubmitting(false);
     }
@@ -170,7 +182,12 @@ const ProductDetail = () => {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
           <div className="space-y-4 sticky top-24">
             <div className="relative group bg-white p-4 rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-white overflow-hidden">
-              <img src={productImages[activeImg]} alt={product.name} className="w-full h-[400px] md:h-[500px] rounded-[2rem] object-cover transition-all duration-700 ease-in-out" />
+              <img 
+                src={getImageUrl(productImages[activeImg])} 
+                alt={product.name} 
+                className="w-full h-[400px] md:h-[500px] rounded-[2rem] object-cover transition-all duration-700 ease-in-out" 
+                onError={(e) => { e.target.src = 'https://placehold.co/600x400?text=Image+Not+Found'; }}
+              />
               {productImages.length > 1 && (
                 <>
                   <button onClick={prevSlide} className="absolute left-6 top-1/2 -translate-y-1/2 bg-white/80 backdrop-blur-md p-3 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-all"><ChevronLeft size={20} /></button>
@@ -180,7 +197,9 @@ const ProductDetail = () => {
             </div>
             <div className="flex gap-4 overflow-x-auto pb-2 px-2 scrollbar-hide">
               {productImages.map((img, index) => (
-                <button key={index} onClick={() => setActiveImg(index)} className={`relative flex-shrink-0 w-20 h-20 rounded-2xl overflow-hidden border-4 transition-all ${activeImg === index ? 'border-blue-600 scale-105' : 'border-white shadow-sm'}`}><img src={img} className="w-full h-full object-cover" alt="" /></button>
+                <button key={index} onClick={() => setActiveImg(index)} className={`relative flex-shrink-0 w-20 h-20 rounded-2xl overflow-hidden border-4 transition-all ${activeImg === index ? 'border-blue-600 scale-105' : 'border-white shadow-sm'}`}>
+                  <img src={getImageUrl(img)} className="w-full h-full object-cover" alt="" />
+                </button>
               ))}
             </div>
           </div>
@@ -247,10 +266,10 @@ const ProductDetail = () => {
                       
                       <div className="relative p-3 bg-white border-2 border-slate-50 rounded-[2rem] shadow-inner">
                         <img 
-                          src="http://localhost:5000/uploads/QR/KB_QR.PNG" 
+                          src={`${API_URL}/uploads/QR/KB_QR.PNG`} 
                           alt="ABA QR" 
                           className="w-48 h-48 rounded-xl object-contain" 
-                          onError={(e) => { e.target.src = "https://via.placeholder.com/200?text=QR+Not+Found"; }}
+                          onError={(e) => { e.target.src = "https://placehold.co/200x200?text=QR+Not+Found"; }}
                         />
                       </div>
 
@@ -266,7 +285,6 @@ const ProductDetail = () => {
                       </div>
                     </div>
 
-                    {/* --- ផ្នែក Upload Payslip UI --- */}
                     <div className="bg-blue-50 p-4 rounded-2xl border-2 border-dashed border-blue-200">
                       <p className="text-[10px] font-black text-blue-600 uppercase mb-3 text-center">សូមបញ្ជាក់ការបង់ប្រាក់ (Upload Payslip)</p>
                       <label className="flex flex-col items-center justify-center cursor-pointer">
