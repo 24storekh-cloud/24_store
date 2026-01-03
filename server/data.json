@@ -1,0 +1,41 @@
+{
+  "products": [
+    {
+      "id": "1767324122958",
+      "name": "iPhone 17 Pro Max 1TB",
+      "price": "2415",
+      "category": "phone",
+      "detail": "1-Year Warranty\r\nSpecial number (Gold A),\r\nOriginal Adapter (20W)\r\nCase + Screen",
+      "stock": "5",
+      "images": [
+        "http://localhost:5000/uploads/1767324179877-2 (1).avif",
+        "http://localhost:5000/uploads/1767324179877-2 (3).avif",
+        "http://localhost:5000/uploads/1767324179877-3.avif"
+      ],
+      "type": [
+        "product",
+        "product"
+      ],
+      "title": "",
+      "cost": "2100"
+    }
+  ],
+  "banners": [
+    {
+      "id": 1767331095049,
+      "title": "01",
+      "image": "http://localhost:5000/uploads/1767331095038-1.jpg"
+    },
+    {
+      "id": 1767331098097,
+      "title": "02",
+      "image": "http://localhost:5000/uploads/1767331108577-5.jpg"
+    },
+    {
+      "id": 1767334907062,
+      "title": "03",
+      "image": "http://localhost:5000/uploads/1767334907053-TA-2025-12-04-13-04-54-Atranquil,-317703186289976.png"
+    }
+  ],
+  "orders": []
+}

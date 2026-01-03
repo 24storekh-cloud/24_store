@@ -1,0 +1,18 @@
+[
+  {
+    "orderId": 1767333894115,
+    "productId": "1767324122958",
+    "productName": "iPhone 17 Pro Max 1TB",
+    "qty": "1",
+    "customerName": "Kim Srea (Steav IT)",
+    "customerPhone": "0965778315",
+    "customerAddress": "Phnom penh",
+    "location": "ភ្នំពេញ",
+    "paymentMethod": "ABA / វីង",
+    "deliveryFee": "1.5",
+    "total": "2416.5",
+    "payslip": "http://localhost:5000/uploads/1767333894114-photo_2025-10-30_12-12-58.jpg",
+    "status": "Completed",
+    "date": "2026-01-02, 1:04:54 PM"
+  }
+]
