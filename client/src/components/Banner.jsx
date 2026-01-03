@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import API_URL from './apiConfig';
 
 const Banner = () => {
   const [banners, setBanners] = useState([]);
@@ -10,7 +11,7 @@ const Banner = () => {
   useEffect(() => {
     const fetchBanners = async () => {
       try {
-        const res = await fetch('http://localhost:5000/api/data');
+        const res = await fetch(`${API_URL}/api/data`);
         const data = await res.json();
         setBanners(data.banners || []);
         setLoading(false);

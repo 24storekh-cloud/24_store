@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import API_URL from './apiConfig';
 import Banner from '../components/Banner'; 
 import ProductCard from '../components/ProductCard';
 import { Search, FilterX, LayoutGrid, Loader2, Phone, Mail, Facebook, Send, ArrowUpRight } from 'lucide-react';
@@ -16,7 +17,7 @@ const Home = () => {
     const fetchProducts = async () => {
       try {
         setLoading(true);
-        const res = await fetch('http://localhost:5000/api/data');
+        const res = await fetch(`${API_URL}/api/data`);
         const data = await res.json();
         setAllProducts(data.products || []);
         setLoading(false);
