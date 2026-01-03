@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Plus, Trash2, Upload, X } from 'lucide-react';
+import API_URL from '../apiConfig'; // ១. កុំភ្លេច Import API_URL
 
 const BannerSection = ({ banners, onDelete, onUpload }) => {
   const [showUpload, setShowUpload] = useState(false);
@@ -7,18 +8,40 @@ const BannerSection = ({ banners, onDelete, onUpload }) => {
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
 
+  // ២. បង្កើត Function សម្រាប់ឆែក Link រូបភាព
+  const getBannerUrl = (img) => {
+    if (!img) return 'https://placehold.co/800x400?text=No+Banner';
+    // បើជាប់ localhost ដូរទៅ API_URL
+    if (typeof img === 'string' && img.includes('localhost:5000')) {
+      return img.replace('http://localhost:5000', API_URL);
+    }
+    // បើជា Path ខ្លី
+    if (typeof img === 'string' && !img.startsWith('http')) {
+      return `${API_URL}/${img}`;
+    }
+    return img;
+  };
+
   const handleFileChange = (e) => {
     const selected = e.target.files[0];
-    setFile(selected);
-    setPreview(URL.createObjectURL(selected));
+    if (selected) {
+      setFile(selected);
+      setPreview(URL.createObjectURL(selected));
+    }
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!file || !title) return alert("សូមបំពេញឈ្មោះ និងជ្រើសរើសរូបភាព!");
+    
+    // បញ្ជូនទៅកាន់ Props onUpload (ដែលស្ថិតនៅ Admin.jsx)
     onUpload(title, file);
+
     // Reset form
-    setTitle(''); setFile(null); setPreview(null); setShowUpload(false);
+    setTitle(''); 
+    setFile(null); 
+    setPreview(null); 
+    setShowUpload(false);
   };
 
   return (
@@ -35,7 +58,6 @@ const BannerSection = ({ banners, onDelete, onUpload }) => {
         </button>
       </div>
 
-      {/* ផ្ទាំងសម្រាប់ Upload Banner ថ្មី */}
       {showUpload && (
         <form onSubmit={handleSubmit} className="bg-white p-8 rounded-[2.5rem] border border-blue-100 shadow-xl space-y-4 animate-in zoom-in-95">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
@@ -65,11 +87,17 @@ const BannerSection = ({ banners, onDelete, onUpload }) => {
         </form>
       )}
 
-      {/* បញ្ជី Banner ដែលមានស្រាប់ */}
+      {/* បញ្ជី Banner */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {banners.map(b => (
           <div key={b.id} className="group relative bg-white rounded-[2.5rem] overflow-hidden shadow-sm border border-white">
-            <img src={b.image} className="w-full h-48 object-cover transition-transform group-hover:scale-105" alt={b.title} />
+            {/* ៣. ប្រើ getBannerUrl ដើម្បីការពារ Error localhost */}
+            <img 
+              src={getBannerUrl(b.image)} 
+              className="w-full h-48 object-cover transition-transform group-hover:scale-105" 
+              alt={b.title} 
+              onError={(e) => { e.target.src = 'https://placehold.co/800x400?text=Banner+Error'; }}
+            />
             <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 to-transparent flex flex-col justify-end p-6">
               <h4 className="text-white font-black italic uppercase">{b.title}</h4>
               <button onClick={() => onDelete('banner', b.id)} className="absolute top-4 right-4 p-3 bg-white/20 backdrop-blur-md text-white rounded-xl hover:bg-red-500 transition-all opacity-0 group-hover:opacity-100">
