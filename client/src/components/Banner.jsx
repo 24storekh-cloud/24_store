@@ -11,8 +11,8 @@ const Banner = () => {
   useEffect(() => {
     const fetchBanners = async () => {
       try {
-        const res = await fetch(`${API_URL}/api/data`);
-        const data = await res.json();
+        const response = await fetch(`${API_URL}/api/data`); 
+        const data = await response.json();
         setBanners(data.banners || []);
         setLoading(false);
       } catch (err) {
