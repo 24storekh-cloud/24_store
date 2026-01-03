@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import API_URL from './apiConfig';
+import API_URL from '../apiConfig';
 import Banner from '../components/Banner'; 
 import ProductCard from '../components/ProductCard';
 import { Search, FilterX, LayoutGrid, Loader2, Phone, Mail, Facebook, Send, ArrowUpRight } from 'lucide-react';
