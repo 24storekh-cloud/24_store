@@ -2,14 +2,18 @@ import React from 'react';
 import API_URL from '../apiConfig';
 
 const ProductCard = ({ name, price, image }) => {
-  // បង្កើត Function ដើម្បីត្រួតពិនិត្យ Link រូបភាព
+  
+  // បង្កើត Function ដើម្បីរៀបចំ Link រូបភាពឱ្យត្រឹមត្រូវ
   const getImageUrl = (img) => {
-    if (!img) return 'https://placehold.co/600x400?text=No+Image';
-    
-    // បើ image ជា Link ពេញ (https://...) រួចហើយ ប្រើវាហ្មង
-    if (img.startsWith('http')) return img;
-    
-    // បើ image ជាឈ្មោះ file (uploads/...) ត្រូវភ្ជាប់ជាមួយ API_URL របស់ Render
+    if (!img) return 'https://placehold.co/400x400?text=No+Image';
+
+    // ១. បើ image ជា Link ស្រាប់ (ដូចជាមកពី ImgBB ឬ web ផ្សេង)
+    if (img.startsWith('http')) {
+      // បើវាជាប់ localhost ត្រូវប្តូរវាទៅជា Link របស់ Render វិញ
+      return img.replace('http://localhost:5000', API_URL);
+    }
+
+    // ២. បើ image ជា Path ខ្លី (ឧទាហរណ៍: uploads/123.jpg)
     return `${API_URL}/${img}`;
   };
 
@@ -20,10 +24,10 @@ const ProductCard = ({ name, price, image }) => {
           src={getImageUrl(image)} 
           alt={name} 
           className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" 
-          // បន្ថែម Error handling បើ Server រក File រូបភាពមិនឃើញ
+          // បើទាញពី Render ហើយនៅតែរកមិនឃើញ (ព្រោះ Render លុបរូបចាស់) ឱ្យចេញរូប Placeholder
           onError={(e) => { 
-            e.target.onerror = null; // ការពារ loop បើ placeholder ក៏ error
-            e.target.src = 'https://placehold.co/600x400?text=Image+Not+Found'; 
+            e.target.onerror = null; 
+            e.target.src = 'https://placehold.co/400x400?text=Image+Not+Found'; 
           }}
         />
       </div>
