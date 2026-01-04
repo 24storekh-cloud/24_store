@@ -35,7 +35,19 @@ const AdminDashboard = () => {
   const [previews, setPreviews] = useState([]);
   const [selectedImg, setSelectedImg] = useState(null);
 
-  // --- ១. ទាញទិន្នន័យពី API (ប្រើ API_URL) ---
+  // --- ១. មុខងារជំនួយសម្រាប់សម្អាត URL រូបភាព (ដោះស្រាយ Mixed Content) ---
+  const getCleanUrl = (img) => {
+    if (!img) return 'https://placehold.co/600x400?text=No+Image';
+    if (typeof img === 'string' && img.includes('localhost:5000')) {
+      return img.replace('http://localhost:5000', API_URL);
+    }
+    if (typeof img === 'string' && !img.startsWith('http')) {
+      return `${API_URL}/${img}`;
+    }
+    return img;
+  };
+
+  // --- ២. ទាញទិន្នន័យពី API ---
   const fetchData = async () => {
     try {
       const res = await fetch(`${API_URL}/api/data`);
@@ -49,10 +61,11 @@ const AdminDashboard = () => {
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 5000);
+    const interval = setInterval(fetchData, 10000); // ទាញរាល់ ១០ វិនាទី
     return () => clearInterval(interval);
   }, []);
 
+  // --- ៣. Filter Logic ---
   const filteredProducts = useMemo(() => {
     return data.products.filter(product => {
       const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase());
@@ -65,17 +78,18 @@ const AdminDashboard = () => {
     return data.orders.filter(order => {
       const term = orderSearch.toLowerCase();
       const matchesSearch = order.customerName.toLowerCase().includes(term) ||
-                            order.customerPhone.includes(term);
+                            (order.customerPhone && order.customerPhone.includes(term));
       const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
       return matchesSearch && matchesStatus;
     });
   }, [data.orders, orderSearch, statusFilter]);
 
+  // --- ៤. Export Excel Logic ---
   const exportToExcel = () => {
     if (filteredOrders.length === 0) return toast.error("គ្មានទិន្នន័យសម្រាប់ Export!");
-    const headers = ["Order ID,Customer,Phone,Product,Qty,Total,Status\n"];
+    const headers = "Order ID,Customer,Phone,Product,Qty,Total,Status\n";
     const rows = filteredOrders.map(o => 
-      `${o.orderId},${o.customerName},${o.customerPhone},${o.productName},${o.quantity || o.qty || 1},${o.total},${o.status}`
+      `${o.id},${o.customerName},${o.customerPhone},${o.productName},${o.qty || 1},${o.total},${o.status}`
     ).join("\n");
     const blob = new Blob([headers + rows], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -86,10 +100,9 @@ const AdminDashboard = () => {
     toast.success("ទាញយករបាយការណ៍រួចរាល់!");
   };
 
-  // --- ៥. Handlers (ប្រើ API_URL) ---
+  // --- ៥. Product Handlers ---
   const handleProductSubmit = async (e) => {
     e.preventDefault();
-    // ប្តូរ URL តាមសភាពការណ៍
     const url = isEditMode 
       ? `${API_URL}/api/update/product/${editId}` 
       : `${API_URL}/api/upload`;
@@ -100,7 +113,10 @@ const AdminDashboard = () => {
     files.forEach(file => form.append('images', file));
 
     try {
-      const res = await fetch(url, { method: isEditMode ? 'PUT' : 'POST', body: form });
+      const res = await fetch(url, { 
+        method: isEditMode ? 'PUT' : 'POST', 
+        body: form 
+      });
       if (res.ok) {
         toast.success(isEditMode ? "កែប្រែជោគជ័យ!" : "បង្កើតជោគជ័យ!");
         setIsModalOpen(false);
@@ -108,6 +124,25 @@ const AdminDashboard = () => {
         fetchData();
       }
     } catch (err) { toast.error("ប្រតិបត្តិការបរាជ័យ!"); }
+  };
+
+  // --- ៦. Banner Upload Handler ---
+  const handleBannerUpload = async (title, file) => {
+    const formData = new FormData();
+    formData.append('title', title);
+    formData.append('image', file);
+    formData.append('type', 'banner');
+
+    try {
+      const res = await fetch(`${API_URL}/api/upload`, {
+        method: 'POST',
+        body: formData
+      });
+      if (res.ok) {
+        toast.success("បង្ហោះ Banner រួចរាល់!");
+        fetchData();
+      }
+    } catch (err) { toast.error("មិនអាចបង្ហោះ Banner បានទេ!"); }
   };
 
   const handleUpdateOrderStatus = async (id, newStatus) => {
@@ -126,9 +161,13 @@ const AdminDashboard = () => {
 
   const handleDelete = async (type, id) => {
     if (window.confirm(`តើអ្នកពិតជាចង់លុបមែនទេ?`)) {
-      await fetch(`${API_URL}/api/delete/${type}/${id}`, { method: 'DELETE' });
-      fetchData();
-      toast.success("លុបរួចរាល់!");
+      try {
+        const res = await fetch(`${API_URL}/api/delete/${type}/${id}`, { method: 'DELETE' });
+        if(res.ok) {
+            fetchData();
+            toast.success("លុបរួចរាល់!");
+        }
+      } catch (err) { toast.error("លុបមិនបានសម្រេច!"); }
     }
   };
 
@@ -139,9 +178,15 @@ const AdminDashboard = () => {
       <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} icons={{ LayoutDashboard, Package, ShoppingCart, ImageIcon , BarChart3}} />
 
       <main className="flex-1 p-10 overflow-y-auto">
-        <header className="mb-10">
-           <h2 className="text-3xl font-black text-slate-800 uppercase italic">Admin Panel</h2>
-           <p className="text-slate-400 font-bold uppercase text-xs tracking-widest">Management v2.5</p>
+        <header className="mb-10 flex justify-between items-center">
+           <div>
+            <h2 className="text-3xl font-black text-slate-800 uppercase italic">Admin Panel</h2>
+            <p className="text-slate-400 font-bold uppercase text-xs tracking-widest">Management v2.5</p>
+           </div>
+           <div className="bg-white px-4 py-2 rounded-xl shadow-sm border border-slate-100 flex items-center gap-2">
+              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+              <span className="text-[10px] font-black text-slate-500 uppercase">Live Sync Active</span>
+           </div>
         </header>
 
         {activeTab === 'dashboard' && (
@@ -149,7 +194,7 @@ const AdminDashboard = () => {
             <StatCard label="Total Products" count={data.products.length} icon={<Package size={28}/>} color="blue" />
             <StatCard label="Pending Orders" count={data.orders.filter(o => o.status === 'Pending').length} icon={<ShoppingCart size={28}/>} color="amber" />
             <StatCard label="Active Banners" count={data.banners.length} icon={<ImageIcon size={28}/>} color="purple" />
-            <StatCard label="Total Income" count={`$${data.orders.filter(o => o.status === 'Completed').reduce((sum, o) => sum + Number(o.total), 0).toLocaleString()}`} icon={<BarChart3 size={28}/>} color="emerald" />
+            <StatCard label="Total Income" count={`$${data.orders.filter(o => o.status === 'Completed').reduce((sum, o) => sum + Number(o.total || 0), 0).toLocaleString()}`} icon={<BarChart3 size={28}/>} color="emerald" />
           </div>
         )}
 
@@ -158,18 +203,32 @@ const AdminDashboard = () => {
             <div className="flex flex-col md:flex-row justify-between gap-4">
               <h3 className="text-2xl font-black text-slate-800 uppercase italic">Inventory</h3>
               <div className="flex gap-3">
-                <input 
-                  type="text" placeholder="ស្វែងរកទំនិញ..." 
-                  className="pl-6 pr-4 py-3 bg-white border border-slate-200 rounded-2xl outline-none font-bold shadow-sm focus:ring-2 focus:ring-blue-500 transition-all"
-                  value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
-                />
+                <div className="relative">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                    <input 
+                    type="text" placeholder="ស្វែងរកទំនិញ..." 
+                    className="pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-2xl outline-none font-bold shadow-sm focus:ring-2 focus:ring-blue-500 transition-all"
+                    value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
+                    />
+                </div>
                 <button 
                   onClick={() => { setIsEditMode(false); setFormData({name:'', price:'', category:'phone', detail:'', stock:0}); setPreviews([]); setIsModalOpen(true); }}
-                  className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-black flex items-center gap-2 shadow-lg"
+                  className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-black flex items-center gap-2 shadow-lg hover:bg-blue-700 transition-all"
                 ><Plus size={18}/> Add Product</button>
               </div>
             </div>
-            <ProductTable products={filteredProducts} onEdit={(p) => { setFormData(p); setEditId(p.id); setIsEditMode(true); setPreviews(p.images); setIsModalOpen(true); }} onDelete={handleDelete} />
+            <ProductTable 
+                products={filteredProducts} 
+                onEdit={(p) => { 
+                    setFormData(p); 
+                    setEditId(p.id); 
+                    setIsEditMode(true); 
+                    const imgs = Array.isArray(p.images) ? p.images : (p.image ? [p.image] : []);
+                    setPreviews(imgs.map(img => getCleanUrl(img))); 
+                    setIsModalOpen(true); 
+                }} 
+                onDelete={handleDelete} 
+            />
           </div>
         )}
 
@@ -179,13 +238,13 @@ const AdminDashboard = () => {
               <h3 className="text-2xl font-black text-slate-800 uppercase italic">Customer Orders</h3>
               <div className="flex flex-wrap gap-3 w-full md:w-auto">
                 <button onClick={exportToExcel} className="flex items-center gap-2 px-6 py-3 bg-emerald-600 text-white rounded-2xl font-black text-xs shadow-lg hover:bg-emerald-700 transition-all">
-                  <FileDown size={18}/> Export Excel
+                  <FileDown size={18}/> Export CSV
                 </button>
                 <select 
                   className="px-4 py-3 bg-white border border-slate-200 rounded-2xl outline-none font-bold text-xs shadow-sm"
                   value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
                 >
-                  <option value="all">ស្ថានភាពទាំងអស់</option>
+                  <option value="all">ទាំងអស់</option>
                   <option value="Pending">Pending</option>
                   <option value="Completed">Completed</option>
                 </select>
@@ -199,12 +258,21 @@ const AdminDashboard = () => {
                 </div>
               </div>
             </div>
-            <OrderTable orders={filteredOrders} onUpdateStatus={handleUpdateOrderStatus} onDelete={(id) => handleDelete('order', id)} onViewPayslip={setSelectedImg} />
+            <OrderTable 
+                orders={filteredOrders} 
+                onUpdateStatus={handleUpdateOrderStatus} 
+                onDelete={(id) => handleDelete('order', id)} 
+                onViewPayslip={(url) => setSelectedImg(getCleanUrl(url))} 
+            />
           </div>
         )}
 
         {activeTab === 'banners' && (
-          <BannerSection banners={data.banners} onDelete={handleDelete} onUpload={async (t, f) => { /* logic upload */ }} />
+          <BannerSection 
+            banners={data.banners} 
+            onDelete={handleDelete} 
+            onUpload={handleBannerUpload} 
+          />
         )}
 
         {activeTab === 'finance' && (
@@ -223,14 +291,22 @@ const AdminDashboard = () => {
         previews={previews}
       />
 
+      {/* --- Lightbox សម្រាប់មើលរូបភាពវិក្កយបត្រ --- */}
       {selectedImg && (
-        <div className="fixed inset-0 bg-slate-900/95 z-[999] flex items-center justify-center p-6 backdrop-blur-md transition-all" onClick={() => setSelectedImg(null)}>
-          <div className="relative max-w-2xl w-full flex flex-col items-center">
+        <div className="fixed inset-0 bg-slate-900/90 z-[999] flex items-center justify-center p-6 backdrop-blur-md" onClick={() => setSelectedImg(null)}>
+          <div className="relative max-w-2xl w-full flex flex-col items-center animate-in zoom-in-95 duration-300">
             <button className="absolute -top-12 right-0 text-white hover:text-red-500 transition-colors">
-              <X size={32} />
+              <X size={40} />
             </button>
-            <img src={selectedImg} className="max-h-[85vh] w-auto rounded-3xl shadow-2xl border-4 border-white/10 animate-in zoom-in-95" alt="Slip" />
-            <p className="mt-4 text-white/50 font-bold uppercase tracking-widest text-[10px]">Click anywhere to close</p>
+            <img 
+                src={selectedImg} 
+                className="max-h-[80vh] w-auto rounded-3xl shadow-2xl border-4 border-white/20" 
+                alt="Payment Slip" 
+                onError={(e) => { e.target.src = 'https://placehold.co/600x800?text=Payslip+Not+Found'; }}
+            />
+            <div className="mt-6 bg-white/10 px-6 py-2 rounded-full border border-white/10">
+                <p className="text-white font-black uppercase tracking-widest text-xs">Customer Payment Proof</p>
+            </div>
           </div>
         </div>
       )}
