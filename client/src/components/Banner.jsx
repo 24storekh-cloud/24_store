@@ -7,7 +7,24 @@ const Banner = () => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
 
-  // ១. ទាញទិន្នន័យ Banner ពី Server
+  // ១. បន្ថែមមុខងារត្រួតពិនិត្យ URL រូបភាព
+  const getBannerUrl = (img) => {
+    if (!img) return 'https://placehold.co/1200x600?text=No+Banner+Image';
+    
+    // បើជាប់ localhost ដូរទៅ API_URL (Render)
+    if (typeof img === 'string' && img.includes('localhost:5000')) {
+      return img.replace('http://localhost:5000', API_URL);
+    }
+    
+    // បើជា path ខ្លី (ឧទាហរណ៍: uploads/banner1.jpg)
+    if (typeof img === 'string' && !img.startsWith('http')) {
+      return `${API_URL}/${img}`;
+    }
+    
+    return img;
+  };
+
+  // ២. ទាញទិន្នន័យ Banner ពី Server
   useEffect(() => {
     const fetchBanners = async () => {
       try {
@@ -23,7 +40,7 @@ const Banner = () => {
     fetchBanners();
   }, []);
 
-  // ២. មុខងារ Auto Slide (ប្តូររូបរាល់ ៥ វិនាទី)
+  // ៣. មុខងារ Auto Slide
   useEffect(() => {
     if (banners.length > 0) {
       const interval = setInterval(() => {
@@ -46,19 +63,20 @@ const Banner = () => {
 
   return (
     <div className="relative w-full h-[300px] md:h-[500px] overflow-hidden group">
-      {/* បញ្ជីរូបភាព Banner */}
       <div 
         className="flex w-full h-full transition-transform duration-700 ease-out" 
         style={{ transform: `translateX(-${currentIndex * 100}%)` }}
       >
         {banners.map((banner, index) => (
           <div key={index} className="w-full h-full shrink-0 relative">
+            {/* ៤. ប្រើ getBannerUrl នៅត្រង់ src */}
             <img 
-              src={banner.image} 
+              src={getBannerUrl(banner.image)} 
               alt={banner.title} 
               className="w-full h-full object-cover"
+              onError={(e) => { e.target.src = 'https://placehold.co/1200x600?text=Image+Load+Failed'; }}
             />
-            {/* ផ្ទៃងងឹតបន្តិចពីលើរូបភាព ដើម្បីឱ្យអក្សរងាយអាន */}
+            
             <div className="absolute inset-0 bg-gradient-to-r from-black/40 to-transparent flex items-center px-10 md:px-24">
               <div className="max-w-xl animate-in fade-in slide-in-from-left-10 duration-1000">
                 <h2 className="text-white text-3xl md:text-6xl font-black drop-shadow-2xl leading-tight">
@@ -73,21 +91,14 @@ const Banner = () => {
         ))}
       </div>
 
-      {/* ប៊ូតុងបញ្ជាឆ្វេង-ស្តាំ (បង្ហាញតែពេលដាក់ Mouse ពីលើ) */}
-      <button 
-        onClick={prevSlide}
-        className="absolute left-5 top-1/2 -translate-y-1/2 bg-white/20 hover:bg-white backdrop-blur-md p-3 rounded-full text-white hover:text-black transition-all opacity-0 group-hover:opacity-100 hidden md:block"
-      >
+      {/* Buttons & Indicators (ទុកនៅដដែល) */}
+      <button onClick={prevSlide} className="absolute left-5 top-1/2 -translate-y-1/2 bg-white/20 hover:bg-white backdrop-blur-md p-3 rounded-full text-white hover:text-black transition-all opacity-0 group-hover:opacity-100 hidden md:block">
         <ChevronLeft size={30} />
       </button>
-      <button 
-        onClick={nextSlide}
-        className="absolute right-5 top-1/2 -translate-y-1/2 bg-white/20 hover:bg-white backdrop-blur-md p-3 rounded-full text-white hover:text-black transition-all opacity-0 group-hover:opacity-100 hidden md:block"
-      >
+      <button onClick={nextSlide} className="absolute right-5 top-1/2 -translate-y-1/2 bg-white/20 hover:bg-white backdrop-blur-md p-3 rounded-full text-white hover:text-black transition-all opacity-0 group-hover:opacity-100 hidden md:block">
         <ChevronRight size={30} />
       </button>
 
-      {/* ចំណុចតូចៗខាងក្រោម (Indicators) */}
       <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-3">
         {banners.map((_, index) => (
           <div 
