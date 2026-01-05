@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Upload, Image as ImageIcon } from 'lucide-react';
+import { X, Upload, Package } from 'lucide-react';
 import API_URL from '../apiConfig';
 
 const ProductModal = ({ 
@@ -7,19 +7,14 @@ const ProductModal = ({
   onClose, onSubmit, onFileChange, previews 
 }) => {
   
-  // ១. បង្កើត Function ជំនួយសម្រាប់លាង URL រូបភាពឱ្យបង្ហាញបានត្រឹមត្រូវ
+  // ១. អនុគមន៍ជំនួយសម្រាប់សម្អាត URL រូបភាព
   const getCleanPreviewUrl = (src) => {
     if (!src) return '';
-    
-    // បើជា Blob (រូបភាពថ្មីដែលទើបជ្រើសរើសក្នុង Browser)
-    if (typeof src === 'string' && src.startsWith('blob:')) return src;
-    
-    // បើជា Base64 ចាស់
-    if (typeof src === 'string' && src.startsWith('data:')) return src;
-
-    // បើជាឈ្មោះ File ធម្មតាដែលទាញចេញពី DB (ឧទាហរណ៍: 1735.jpg)
-    // យើងត្រូវភ្ជាប់វាជាមួយ API_URL/uploads/
-    return `${API_URL}/uploads/${src}`;
+    // បើជា Blob (រូបភាពថ្មី) ឬ Base64
+    if (typeof src === 'string' && (src.startsWith('blob:') || src.startsWith('data:'))) return src;
+    // បើជាឈ្មោះ File ធម្មតា ភ្ជាប់ទៅកាន់ Server uploads
+    const baseUrl = API_URL.endsWith('/') ? API_URL.slice(0, -1) : API_URL;
+    return `${baseUrl}/uploads/${src}`;
   };
 
   if (!isOpen) return null;
@@ -30,30 +25,35 @@ const ProductModal = ({
         
         {/* Header */}
         <div className="p-8 border-b border-slate-50 flex justify-between items-center bg-slate-50/50">
-          <div>
-            <h3 className="text-xl font-black text-slate-800 uppercase italic">
-              {isEditMode ? 'Edit Product' : 'Add New Product'}
-            </h3>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Management v2.5 • Inventory Control</p>
+          <div className="flex items-center gap-3">
+            <div className="p-3 bg-blue-600 rounded-2xl text-white">
+                <Package size={20} />
+            </div>
+            <div>
+              <h3 className="text-xl font-black text-slate-800 uppercase italic">
+                {isEditMode ? 'Edit Product' : 'Add New Product'}
+              </h3>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Management v2.6 • Inventory Control</p>
+            </div>
           </div>
           <button 
             onClick={onClose} 
-            className="p-3 hover:bg-white rounded-2xl transition-all text-slate-400 hover:text-red-500 shadow-sm"
+            className="p-3 hover:bg-slate-100 rounded-2xl transition-all text-slate-400 hover:text-red-500"
           >
             <X size={24}/>
           </button>
         </div>
 
-        <form onSubmit={onSubmit} className="p-8 space-y-5 max-h-[80vh] overflow-y-auto">
+        <form onSubmit={onSubmit} className="p-8 space-y-5 max-h-[75vh] overflow-y-auto custom-scrollbar">
           
-          {/* Name Field */}
+          {/* Product Name */}
           <div className="space-y-2">
             <label className="text-[10px] font-black text-slate-400 uppercase ml-2 tracking-widest">Product Name</label>
             <input 
               required 
               className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold focus:ring-2 focus:ring-blue-500 transition-all border border-transparent focus:bg-white" 
               placeholder="ឈ្មោះផលិតផល..." 
-              value={formData.name} 
+              value={formData.name || ''} 
               onChange={e => setFormData({...formData, name: e.target.value})} 
             />
           </div>
@@ -66,9 +66,10 @@ const ProductModal = ({
                 required 
                 type="number" 
                 step="0.01"
+                min="0"
                 className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold focus:ring-2 focus:ring-blue-500 transition-all border border-transparent focus:bg-white text-emerald-600" 
                 placeholder="0.00" 
-                value={formData.price} 
+                value={formData.price || ''} 
                 onChange={e => setFormData({...formData, price: e.target.value})} 
               />
             </div>
@@ -78,6 +79,7 @@ const ProductModal = ({
                 required 
                 type="number" 
                 step="0.01"
+                min="0"
                 className="w-full p-4 bg-red-50/30 rounded-2xl outline-none font-bold focus:ring-2 focus:ring-red-500 transition-all border border-transparent focus:bg-white text-red-600" 
                 placeholder="0.00" 
                 value={formData.cost || ''} 
@@ -92,7 +94,7 @@ const ProductModal = ({
               <label className="text-[10px] font-black text-slate-400 uppercase ml-2 tracking-widest">Category</label>
               <select 
                 className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold cursor-pointer border border-transparent focus:border-blue-500 transition-all" 
-                value={formData.category} 
+                value={formData.category || 'phone'} 
                 onChange={e => setFormData({...formData, category: e.target.value})}
               >
                 <option value="phone">Smartphones</option>
@@ -104,10 +106,12 @@ const ProductModal = ({
             <div className="space-y-2">
               <label className="text-[10px] font-black text-slate-400 uppercase ml-2 tracking-widest">Stock Qty</label>
               <input 
+                required
                 type="number" 
+                min="0"
                 className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold focus:ring-2 focus:ring-blue-500 transition-all border border-transparent focus:bg-white" 
                 placeholder="0" 
-                value={formData.stock} 
+                value={formData.stock || 0} 
                 onChange={e => setFormData({...formData, stock: e.target.value})} 
               />
             </div>
@@ -117,9 +121,9 @@ const ProductModal = ({
           <div className="space-y-2">
             <label className="text-[10px] font-black text-slate-400 uppercase ml-2 tracking-widest">Description</label>
             <textarea 
-              className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold focus:ring-2 focus:ring-blue-500 transition-all border border-transparent focus:bg-white min-h-[100px]" 
+              className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold focus:ring-2 focus:ring-blue-500 transition-all border border-transparent focus:bg-white min-h-[100px] resize-none" 
               placeholder="ព័ត៌មានលម្អិតពីផលិតផល..." 
-              value={formData.detail} 
+              value={formData.detail || ''} 
               onChange={e => setFormData({...formData, detail: e.target.value})}
             ></textarea>
           </div>
@@ -134,7 +138,7 @@ const ProductModal = ({
             </label>
           </div>
 
-          {/* Image Previews Section */}
+          {/* Previews */}
           {previews && previews.length > 0 && (
             <div className="space-y-2">
               <p className="text-[9px] font-black text-blue-500 uppercase ml-2">Selected Preview ({previews.length})</p>
@@ -157,7 +161,7 @@ const ProductModal = ({
           )}
 
           {/* Submit Button */}
-          <div className="pt-4 pb-2">
+          <div className="pt-4 sticky bottom-0 bg-white pb-2">
             <button 
               type="submit" 
               className="w-full py-5 bg-blue-600 text-white rounded-[2rem] font-black text-lg hover:bg-blue-700 shadow-xl shadow-blue-100 active:scale-[0.98] transition-all flex items-center justify-center gap-3 uppercase italic"
