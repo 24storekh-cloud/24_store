@@ -117,6 +117,7 @@ const AdminDashboard = () => {
     e.preventDefault();
     const loadingToast = toast.loading(isEditMode ? "កំពុងកែប្រែ..." : "កំពុងបញ្ចូល...");
     
+    // ១. កំណត់ URL (បើ Edit ត្រូវមាន ID នៅខាងចុង)
     const url = isEditMode 
       ? `${API_URL}/api/update/product/${editId}` 
       : `${API_URL}/api/upload`;
@@ -130,25 +131,22 @@ const AdminDashboard = () => {
     form.append('detail', formData.detail);
     form.append('stock', formData.stock);
 
+    // បើមានរូបភាពថ្មី ត្រូវបញ្ជូនទៅដែរ
     files.forEach(file => form.append('images', file));
 
     try {
       const res = await fetch(url, { 
-        method: isEditMode ? 'PUT' : 'POST', 
+        method: isEditMode ? 'PUT' : 'POST', // បើកែប្រើ PUT
         body: form 
       });
       
       if (res.ok) {
-        toast.success(isEditMode ? "កែប្រែជោគជ័យ!" : "បង្កើតជោគជ័យ!", { id: loadingToast });
+        toast.success("រក្សាទុកជោគជ័យ!", { id: loadingToast });
         setIsModalOpen(false);
-        setFiles([]); 
-        setPreviews([]);
-        fetchData(); // Update UI ភ្លាមៗ
-      } else {
-        throw new Error("API Error");
+        fetchData(true); // ទាញទិន្នន័យថ្មីពី server មកបង្ហាញភ្លាមៗ
       }
     } catch (err) { 
-      toast.error("មានបញ្ហាក្នុងការរក្សាទុក!", { id: loadingToast }); 
+      toast.error("បញ្ហាការតភ្ជាប់!"); 
     }
   };
 

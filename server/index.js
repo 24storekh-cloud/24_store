@@ -17,7 +17,7 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 const DATA_FILE = 'data.json';
 const ORDERS_FILE = 'orders.json';
 
-// Telegram Configuration (ប្តូរតាម Bot របស់អ្នក)
+// Telegram Configuration
 const BOT_TOKEN = '8227092903:AAFpSAV1ZRr8WRLCD23wCHhS_3teAEN_1SI'; 
 const CHAT_ID = '7026983728';
 
@@ -60,12 +60,14 @@ const upload = multer({ storage });
 
 // ================= 2. API Product & Banner Management =================
 
+// ទាញទិន្នន័យទាំងអស់ (Products, Banners, Orders)
 app.get('/api/data', (req, res) => {
     const data = safeReadJSON(DATA_FILE, { products: [], banners: [] });
     const orders = safeReadJSON(ORDERS_FILE, []);
     res.json({ products: data.products, banners: data.banners, orders: orders });
 });
 
+// បង្កើតថ្មី (Product ឬ Banner)
 app.post('/api/upload', upload.any(), (req, res) => {
     try {
         const { type, name, price, cost, category, detail, title, stock } = req.body;
@@ -97,6 +99,7 @@ app.post('/api/upload', upload.any(), (req, res) => {
     }
 });
 
+// កែប្រែ Product
 app.put('/api/update/product/:id', upload.any(), (req, res) => {
     try {
         const { id } = req.params;
@@ -108,7 +111,7 @@ app.put('/api/update/product/:id', upload.any(), (req, res) => {
             let finalImages = data.products[idx].images;
             
             if (req.files && req.files.length > 0) {
-                // លុបរូបភាពចាស់ៗចេញពី folder uploads ដើម្បីសន្សំ space
+                // លុបរូបភាពចាស់ៗ
                 if (Array.isArray(data.products[idx].images)) {
                     data.products[idx].images.forEach(imgName => {
                         const oldPath = path.join(__dirname, 'uploads', imgName);
@@ -138,18 +141,47 @@ app.put('/api/update/product/:id', upload.any(), (req, res) => {
         res.status(500).json({ success: false, error: error.message });
     }
 });
-// ================= 3. delete =================
-// កូដលុបដែលកែសម្រួលរួច (Update ត្រង់ Filter និង Find)
+
+// កែប្រែ Banner
+app.put('/api/update/banner/:id', upload.single('images'), (req, res) => {
+    try {
+        const { id } = req.params;
+        const { title } = req.body;
+        let data = safeReadJSON(DATA_FILE, { products: [], banners: [] });
+        
+        const idx = data.banners.findIndex(b => b.id.toString() === id);
+        if (idx !== -1) {
+            if (req.file) {
+                // លុបរូបចាស់
+                const oldImgName = data.banners[idx].image;
+                if (oldImgName) {
+                    const oldPath = path.join(__dirname, 'uploads', oldImgName);
+                    if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+                }
+                data.banners[idx].image = req.file.filename;
+            }
+            data.banners[idx].title = title || data.banners[idx].title;
+            
+            safeWriteJSON(DATA_FILE, data);
+            res.json({ success: true, message: "Banner updated!" });
+        } else {
+            res.status(404).json({ success: false, message: "Banner not found" });
+        }
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// លុប (Product ឬ Banner)
 app.delete('/api/delete/:type/:id', (req, res) => {
     const { type, id } = req.params;
     let data = safeReadJSON(DATA_FILE, { products: [], banners: [] });
     const key = type === 'product' ? 'products' : 'banners';
     
-    // ១. រក Item ដែលត្រូវលុប (ប្រើ == ដើម្បីឱ្យស្គាល់ទាំង String និង Number)
     const itemToDelete = data[key].find(i => i.id == id); 
     
     if (itemToDelete) {
-        // ២. លុបរូបភាពក្នុង Folder
+        // លុបរូបភាពចេញពី Folder
         const imgs = type === 'product' ? (itemToDelete.images || []) : [itemToDelete.image];
         imgs.forEach(imgName => {
             if (imgName) {
@@ -158,19 +190,16 @@ app.delete('/api/delete/:type/:id', (req, res) => {
             }
         });
         
-        // ៣. លុបទិន្នន័យចេញពី Array (ប្រើ != ដើម្បីចម្រោះយកតែ ID ដែលមិនមែនជា ID ចង់លុប)
         data[key] = data[key].filter(i => i.id != id);
-        
-        // ៤. រក្សាទុកចូល File វិញ
         safeWriteJSON(DATA_FILE, data);
         return res.json({ success: true, message: `${type} deleted successfully` });
     }
-
     res.status(404).json({ success: false, message: "រកទិន្នន័យមិនឃើញ!" });
 });
 
 // ================= 3. Order Management =================
 
+// ទទួលការកុម្ម៉ង់ថ្មី (Customer Side)
 app.post('/api/orders', upload.any(), async (req, res) => {
     try {
         const orderData = req.body;
@@ -210,7 +239,7 @@ app.post('/api/orders', upload.any(), async (req, res) => {
         orders.unshift(newOrder); 
         safeWriteJSON(ORDERS_FILE, orders);
 
-        // ៣. ផ្ញើទៅ Telegram (ប្រើ Try/Catch ដាច់ដោយឡែកដើម្បីការពារ Server គាំងបើសិនជា Telegram Error)
+        // ៣. ផ្ញើទៅ Telegram
         try {
             const message = `🔔 <b>ការកុម្ម៉ង់ថ្មី!</b>\n` +
                             `--------------------------\n` +
@@ -224,9 +253,7 @@ app.post('/api/orders', upload.any(), async (req, res) => {
                             `⏰ ${today}`;
 
             await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-                chat_id: CHAT_ID,
-                text: message,
-                parse_mode: 'HTML'
+                chat_id: CHAT_ID, text: message, parse_mode: 'HTML'
             });
 
             if (payslipFile && fs.existsSync(payslipFile.path)) {
@@ -239,18 +266,15 @@ app.post('/api/orders', upload.any(), async (req, res) => {
                     headers: teleFormData.getHeaders()
                 });
             }
-        } catch (teleErr) {
-            console.error("Telegram error:", teleErr.message);
-        }
+        } catch (teleErr) { console.error("Telegram error:", teleErr.message); }
 
         res.json({ success: true, orderId: newOrder.orderId });
-
     } catch (error) {
-        console.error("Order Error:", error.message);
         res.status(500).json({ success: false, error: "Server Error" });
     }
 });
 
+// Update ស្ថានភាព Order (Admin)
 app.patch('/api/orders/:id/status', (req, res) => {
     let orders = safeReadJSON(ORDERS_FILE, []);
     const index = orders.findIndex(o => o.orderId.toString() === req.params.id);
@@ -258,11 +282,10 @@ app.patch('/api/orders/:id/status', (req, res) => {
         orders[index].status = req.body.status;
         safeWriteJSON(ORDERS_FILE, orders);
         res.json({ success: true });
-    } else {
-        res.status(404).json({ success: false });
-    }
+    } else { res.status(404).json({ success: false }); }
 });
 
+// លុប Order
 app.delete('/api/orders/:id', (req, res) => {
     let orders = safeReadJSON(ORDERS_FILE, []);
     const orderToDelete = orders.find(o => o.orderId.toString() === req.params.id);
@@ -278,5 +301,5 @@ app.delete('/api/orders/:id', (req, res) => {
 // ================= 4. Start Server =================
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
-    console.log(`🚀 Server is running on port ${PORT}`);
+    console.log(`🚀 Server is running on http://localhost:${PORT}`);
 });
