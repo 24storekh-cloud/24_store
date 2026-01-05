@@ -12,7 +12,7 @@ import ProductDetail from './pages/ProductDetail';
 import Cart from './pages/Cart';
 import Checkout from './pages/Checkout';
 import SuccessPage from './pages/SuccessPage'; // ទំព័រជោគជ័យដែលទើបបង្កើត
-import AdminDashboard from './pages/AdminDashboard'; // ប្រសិនបើអ្នកមានទំព័រ Admin
+// import AdminDashboard from './pages/AdminDashboard'; // ប្រសិនបើអ្នកមានទំព័រ Admin
 
 // --- Import Provider ---
 import { CartProvider } from './context/CartContext';
@@ -51,7 +51,7 @@ function App() {
               <Route path="/success" element={<SuccessPage />} />
 
               {/* ៤. ទំព័រ Admin (សម្រាប់គ្រប់គ្រងស្តុក និង Order) */}
-              <Route path="/admin-control-panel" element={<AdminDashboard />} />
+              {/* <Route path="/admin-control-panel" element={<AdminDashboard />} /> */}
 
               {/* ទំព័រ 404 (Optional) */}
               <Route path="*" element={
