@@ -1,188 +1,106 @@
-import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Upload, X, Loader2 } from 'lucide-react';
-import API_URL from '../apiConfig';
+import React, { useState } from 'react';
+import axios from 'axios';
 
-const BannerSection = ({ banners, onDelete, onUpload }) => {
-  const [showUpload, setShowUpload] = useState(false);
-  const [title, setTitle] = useState('');
-  const [file, setFile] = useState(null);
-  const [preview, setPreview] = useState(null);
-  const [isUploading, setIsUploading] = useState(false);
+const BannerSection = ({ onRefresh }) => {
+    const [title, setTitle] = useState('');
+    const [file, setFile] = useState(null);
+    const [preview, setPreview] = useState(null);
+    const [loading, setLoading] = useState(false);
 
-  // ១. មុខងារសម្អាត Memory (Revoke URL) ដើម្បីកុំឱ្យ Browser ដើរយឺត
-  useEffect(() => {
-    return () => {
-      if (preview && preview.startsWith('blob:')) {
-        URL.revokeObjectURL(preview);
-      }
+    // នៅពេលរើសរូបភាព
+    const handleFileChange = (e) => {
+        const selectedFile = e.target.files[0];
+        if (selectedFile) {
+            setFile(selectedFile);
+            setPreview(URL.createObjectURL(selectedFile)); // បង្ហាញរូបភាពបណ្តោះអាសន្ន
+        }
     };
-  }, [preview]);
 
-  // ២. មុខងារឆែក URL រូបភាព (គាំទ្រទាំង Base64 និង Legacy Links)
-  const getBannerUrl = (img) => {
-    if (!img) return 'https://placehold.co/800x400?text=No+Banner';
-    
-    // ប្រសិនបើជា Base64 string (រក្សាទុកក្នុង JSON ថ្មី)
-    if (typeof img === 'string' && img.startsWith('data:')) {
-      return img;
-    }
-    
-    // ករណីទិន្នន័យចាស់ដែលជាប់ localhost
-    if (typeof img === 'string' && img.includes('localhost:5000')) {
-      return img.replace('http://localhost:5000', API_URL);
-    }
-    
-    // ករណីទិន្នន័យជា path ខ្លី (ឧទាហរណ៍៖ uploads/image.jpg)
-    if (typeof img === 'string' && !img.startsWith('http')) {
-      return `${API_URL}/${img}`;
-    }
-    
-    return img;
-  };
+    const onSubmit = async (e) => {
+        e.preventDefault();
+        if (!file) return alert("សូមជ្រើសរើសរូបភាព Banner!");
 
-  const handleFileChange = (e) => {
-    const selected = e.target.files[0];
-    if (selected) {
-      // លុប Preview ចាស់ចេញពី Memory
-      if (preview) URL.revokeObjectURL(preview);
-      
-      setFile(selected);
-      setPreview(URL.createObjectURL(selected));
-    }
-  };
+        setLoading(true);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!file || !title) return alert("សូមបំពេញឈ្មោះ និងជ្រើសរើសរូបភាព!");
-    
-    setIsUploading(true);
-    try {
-      // បញ្ជូនទៅកាន់ Admin.jsx (ដែលនឹងប្រើ axios.post ទៅកាន់ Backend)
-      await onUpload(title, file);
+        // បង្កើត FormData ដើម្បីផ្ញើ File ទៅ Server
+        const formData = new FormData();
+        formData.append('type', 'banner');
+        formData.append('title', title);
+        formData.append('images', file); // 'images' ត្រូវតែដូចឈ្មោះក្នុង upload.array('images') នៅ Server
 
-      // Reset Form ក្រោយជោគជ័យ
-      setTitle(''); 
-      setFile(null); 
-      setPreview(null); 
-      setShowUpload(false);
-    } catch (error) {
-      console.error("Upload failed:", error);
-      alert("ការបង្ហោះរូបភាពមានបញ្ហា!");
-    } finally {
-      setIsUploading(false);
-    }
-  };
+        try {
+            const response = await axios.post('https://two4-store.onrender.com/api/upload', formData, {
+                headers: {
+                    'Content-Type': 'multipart/form-data'
+                }
+            });
 
-  return (
-    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h3 className="text-2xl font-black text-slate-800 uppercase italic">Promotion Banners</h3>
-          <p className="text-xs text-slate-500 font-bold">គ្រប់គ្រងរូបភាពផ្សព្វផ្សាយនៅលើគេហទំព័រ</p>
-        </div>
-        <button 
-          onClick={() => {
-            setShowUpload(!showUpload);
-            if (preview) setPreview(null);
-          }}
-          className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-black text-sm transition-all shadow-lg 
-            ${showUpload ? 'bg-slate-200 text-slate-600' : 'bg-blue-600 text-white shadow-blue-200 hover:bg-blue-700'}`}
-        >
-          {showUpload ? <X size={18}/> : <Plus size={18}/>}
-          {showUpload ? 'Cancel' : 'Add Banner'}
-        </button>
-      </div>
+            if (response.data.success) {
+                alert("រក្សាទុក Banner ជោគជ័យ!");
+                setTitle('');
+                setFile(null);
+                setPreview(null);
+                if (onRefresh) onRefresh(); // ឱ្យវាទាញទិន្នន័យថ្មីមកបង្ហាញ
+            }
+        } catch (error) {
+            console.error("Upload Error:", error.response?.data || error.message);
+            alert("មានបញ្ហាពេល Upload: " + (error.response?.data?.error || error.message));
+        } finally {
+            setLoading(false);
+        }
+    };
 
-      {/* Form Upload */}
-      {showUpload && (
-        <form onSubmit={handleSubmit} className="bg-white p-8 rounded-[2.5rem] border border-blue-100 shadow-xl space-y-4 animate-in zoom-in-95">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <label className="text-xs font-black text-slate-400 ml-2 uppercase">Banner Title</label>
-                <input 
-                  type="text" 
-                  placeholder="ឧទាហរណ៍៖ បញ្ចុះតម្លៃ ៥០% សម្រាប់ឆ្នាំថ្មី"
-                  className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold focus:ring-2 focus:ring-blue-500 transition-all"
-                  value={title} 
-                  onChange={(e) => setTitle(e.target.value)}
-                  disabled={isUploading}
-                />
-              </div>
-              
-              <label className={`flex flex-col items-center justify-center p-6 border-4 border-dashed rounded-[2rem] transition-all cursor-pointer
-                ${preview ? 'border-blue-100 bg-blue-50/30' : 'border-slate-100 hover:bg-slate-50'}`}>
-                <Upload className={`${preview ? 'text-blue-500' : 'text-slate-300'} mb-2`} />
-                <span className="text-xs font-black text-slate-400 uppercase">
-                  {file ? file.name : 'ជ្រើសរើសរូបភាព Banner'}
-                </span>
-                <input type="file" className="hidden" onChange={handleFileChange} accept="image/*" disabled={isUploading} />
-              </label>
-            </div>
-            
-            {/* Preview Area */}
-            <div className="relative group min-h-[160px] flex items-center justify-center bg-slate-50 rounded-2xl overflow-hidden border border-slate-100">
-              {preview ? (
-                <img src={preview} className="w-full h-40 object-cover" alt="Preview" />
-              ) : (
-                <div className="text-center p-4">
-                  <p className="text-[10px] font-black text-slate-300 uppercase italic">រង់ចាំមើលរូបភាពទីនេះ</p>
+    return (
+        <div style={{ padding: '20px', border: '1px solid #ddd', borderRadius: '8px', marginBottom: '20px' }}>
+            <h3>បន្ថែម Banner ថ្មី</h3>
+            <form onSubmit={onSubmit}>
+                <div style={{ marginBottom: '10px' }}>
+                    <label>ចំណងជើង Banner:</label><br/>
+                    <input 
+                        type="text" 
+                        value={title} 
+                        onChange={(e) => setTitle(e.target.value)} 
+                        style={{ width: '100%', padding: '8px', marginTop: '5px' }}
+                        placeholder="ឧទាហរណ៍៖ បញ្ចុះតម្លៃពិសេស ៥០%"
+                        required
+                    />
                 </div>
-              )}
-            </div>
-          </div>
 
-          <button 
-            type="submit" 
-            disabled={isUploading}
-            className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black shadow-lg hover:bg-blue-700 disabled:bg-slate-400 disabled:shadow-none flex justify-center items-center gap-2"
-          >
-            {isUploading ? (
-              <>
-                <Loader2 size={20} className="animate-spin" />
-                Processing...
-              </>
-            ) : 'Confirm Upload Banner'}
-          </button>
-        </form>
-      )}
+                <div style={{ marginBottom: '10px' }}>
+                    <label>រើសរូបភាព Banner:</label><br/>
+                    <input 
+                        type="file" 
+                        accept="image/*" 
+                        onChange={handleFileChange} 
+                        style={{ marginTop: '5px' }}
+                        required
+                    />
+                </div>
 
-      {/* Grid បង្ហាញ Banner */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {banners.length > 0 ? (
-          banners.map(b => (
-            <div key={b.id} className="group relative bg-white rounded-[2.5rem] overflow-hidden shadow-sm border border-white hover:shadow-xl transition-all">
-              <img 
-                src={getBannerUrl(b.image)} 
-                className="w-full h-52 object-cover transition-transform duration-500 group-hover:scale-110" 
-                alt={b.title} 
-                onError={(e) => { e.target.src = 'https://placehold.co/800x400?text=Image+Load+Failed'; }}
-              />
-              {/* Overlay Content */}
-              <div className="absolute inset-0 bg-gradient-to-t from-slate-900/90 via-slate-900/20 to-transparent flex flex-col justify-end p-6">
-                <h4 className="text-white font-black italic uppercase tracking-wide truncate">{b.title}</h4>
-                <p className="text-white/60 text-[10px] font-bold">Banner ID: {b.id}</p>
-                
+                {preview && (
+                    <div style={{ marginBottom: '10px' }}>
+                        <p>រូបភាព Preview:</p>
+                        <img src={preview} alt="Preview" style={{ width: '100%', maxHeight: '200px', objectFit: 'cover', borderRadius: '5px' }} />
+                    </div>
+                )}
+
                 <button 
-                  onClick={() => {
-                    if(window.confirm('តើអ្នកច្បាស់ទេថានឹងលុប Banner នេះ?')) onDelete('banner', b.id);
-                  }}
-                  className="absolute top-4 right-4 p-3 bg-white/20 backdrop-blur-md text-white rounded-xl hover:bg-red-500 transition-all md:opacity-0 group-hover:opacity-100"
+                    type="submit" 
+                    disabled={loading}
+                    style={{ 
+                        padding: '10px 20px', 
+                        backgroundColor: loading ? '#ccc' : '#28a745', 
+                        color: 'white', 
+                        border: 'none', 
+                        borderRadius: '5px',
+                        cursor: loading ? 'not-allowed' : 'pointer'
+                    }}
                 >
-                  <Trash2 size={18}/>
+                    {loading ? 'កំពុងរក្សាទុក...' : 'រក្សាទុក Banner'}
                 </button>
-              </div>
-            </div>
-          ))
-        ) : (
-          <div className="col-span-full py-20 text-center bg-slate-50 rounded-[2.5rem] border border-dashed border-slate-200">
-            <p className="font-black text-slate-300 uppercase italic">មិនទាន់មាន Banner ផ្សព្វផ្សាយនៅឡើយ</p>
-          </div>
-        )}
-      </div>
-    </div>
-  );
+            </form>
+        </div>
+    );
 };
 
 export default BannerSection;
