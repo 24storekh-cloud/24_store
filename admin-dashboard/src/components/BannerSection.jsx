@@ -9,7 +9,7 @@ const BannerSection = ({ banners, onDelete, onUpload }) => {
   const [preview, setPreview] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
 
-  // ១. មុខងារសម្អាត Memory (Revoke URL) ដើម្បីកុំឱ្យ Browser ដើរយឺត
+  // ១. មុខងារសម្អាត Memory (Revoke URL)
   useEffect(() => {
     return () => {
       if (preview && preview.startsWith('blob:')) {
@@ -18,34 +18,23 @@ const BannerSection = ({ banners, onDelete, onUpload }) => {
     };
   }, [preview]);
 
-  // ២. មុខងារឆែក URL រូបភាព (គាំទ្រទាំង Base64 និង Legacy Links)
-  const getBannerUrl = (img) => {
-    if (!img) return 'https://placehold.co/800x400?text=No+Banner';
+  // ២. កែសម្រួលមុខងារបង្ហាញ URL រូបភាពឱ្យត្រូវជាមួយ Folder /uploads
+  const getBannerUrl = (imgName) => {
+    if (!imgName) return 'https://placehold.co/800x400?text=No+Banner';
     
-    // ប្រសិនបើជា Base64 string (រក្សាទុកក្នុង JSON ថ្មី)
-    if (typeof img === 'string' && img.startsWith('data:')) {
-      return img;
+    // បើជា Base64 ចាស់ (ការពារ Error លើទិន្នន័យចាស់)
+    if (typeof imgName === 'string' && imgName.startsWith('data:')) {
+      return imgName;
     }
     
-    // ករណីទិន្នន័យចាស់ដែលជាប់ localhost
-    if (typeof img === 'string' && img.includes('localhost:5000')) {
-      return img.replace('http://localhost:5000', API_URL);
-    }
-    
-    // ករណីទិន្នន័យជា path ខ្លី (ឧទាហរណ៍៖ uploads/image.jpg)
-    if (typeof img === 'string' && !img.startsWith('http')) {
-      return `${API_URL}/${img}`;
-    }
-    
-    return img;
+    // បើជាឈ្មោះ File (ឧទាហរណ៍៖ 1735912345.jpg) យើងទាញពី /uploads របស់ Backend
+    return `${API_URL}/uploads/${imgName}`;
   };
 
   const handleFileChange = (e) => {
     const selected = e.target.files[0];
     if (selected) {
-      // លុប Preview ចាស់ចេញពី Memory
       if (preview) URL.revokeObjectURL(preview);
-      
       setFile(selected);
       setPreview(URL.createObjectURL(selected));
     }
@@ -56,18 +45,26 @@ const BannerSection = ({ banners, onDelete, onUpload }) => {
     if (!file || !title) return alert("សូមបំពេញឈ្មោះ និងជ្រើសរើសរូបភាព!");
     
     setIsUploading(true);
+    
+    // ត្រូវប្រើ FormData ដើម្បីផ្ញើ File ទៅកាន់ Backend
+    const formData = new FormData();
+    formData.append('type', 'banner');
+    formData.append('title', title);
+    formData.append('images', file); // 'images' ត្រូវតែដូចឈ្មោះក្នុង upload.array('images') នៅ backend
+
     try {
-      // បញ្ជូនទៅកាន់ Admin.jsx (ដែលនឹងប្រើ axios.post ទៅកាន់ Backend)
-      await onUpload(title, file);
+      // បញ្ជូន formData ទាំងមូលទៅកាន់ onUpload ក្នុង Admin.jsx
+      await onUpload(formData);
 
       // Reset Form ក្រោយជោគជ័យ
       setTitle(''); 
       setFile(null); 
       setPreview(null); 
       setShowUpload(false);
+      alert("បង្ហោះ Banner ជោគជ័យ!");
     } catch (error) {
       console.error("Upload failed:", error);
-      alert("ការបង្ហោះរូបភាពមានបញ្ហា!");
+      alert("ការបង្ហោះរូបភាពមានបញ្ហា! (Error 500)");
     } finally {
       setIsUploading(false);
     }
@@ -114,7 +111,7 @@ const BannerSection = ({ banners, onDelete, onUpload }) => {
               <label className={`flex flex-col items-center justify-center p-6 border-4 border-dashed rounded-[2rem] transition-all cursor-pointer
                 ${preview ? 'border-blue-100 bg-blue-50/30' : 'border-slate-100 hover:bg-slate-50'}`}>
                 <Upload className={`${preview ? 'text-blue-500' : 'text-slate-300'} mb-2`} />
-                <span className="text-xs font-black text-slate-400 uppercase">
+                <span className="text-xs font-black text-slate-400 uppercase text-center">
                   {file ? file.name : 'ជ្រើសរើសរូបភាព Banner'}
                 </span>
                 <input type="file" className="hidden" onChange={handleFileChange} accept="image/*" disabled={isUploading} />
@@ -150,7 +147,7 @@ const BannerSection = ({ banners, onDelete, onUpload }) => {
 
       {/* Grid បង្ហាញ Banner */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {banners.length > 0 ? (
+        {banners && banners.length > 0 ? (
           banners.map(b => (
             <div key={b.id} className="group relative bg-white rounded-[2.5rem] overflow-hidden shadow-sm border border-white hover:shadow-xl transition-all">
               <img 
@@ -159,7 +156,6 @@ const BannerSection = ({ banners, onDelete, onUpload }) => {
                 alt={b.title} 
                 onError={(e) => { e.target.src = 'https://placehold.co/800x400?text=Image+Load+Failed'; }}
               />
-              {/* Overlay Content */}
               <div className="absolute inset-0 bg-gradient-to-t from-slate-900/90 via-slate-900/20 to-transparent flex flex-col justify-end p-6">
                 <h4 className="text-white font-black italic uppercase tracking-wide truncate">{b.title}</h4>
                 <p className="text-white/60 text-[10px] font-bold">Banner ID: {b.id}</p>
