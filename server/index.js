@@ -6,25 +6,36 @@ const path = require('path');
 const axios = require('axios');
 
 const app = express();
+
+// 1. មូលដ្ឋានគ្រឹះ និងសុវត្ថិភាព (Configuration)
 app.use(cors());
-
-// បង្កើន limit ដើម្បីទទួលរូបភាព Base64 ធំៗ
-app.use(express.json({ limit: '50mb' }));
+app.use(express.json({ limit: '50mb' })); // ដោះស្រាយ Error 431
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
-
-// បន្តបើក static សម្រាប់ legacy files (បើមាន)
 app.use('/uploads', express.static('uploads'));
 
 const DATA_FILE = 'data.json';
 const ORDERS_FILE = 'orders.json';
+
+// --- បង្កើត File JSON បើមិនទាន់មាន ដើម្បីការពារ Error ពេល Start ---
+const initFiles = () => {
+    if (!fs.existsSync(DATA_FILE)) {
+        fs.writeFileSync(DATA_FILE, JSON.stringify({ products: [], banners: [] }, null, 2));
+    }
+    if (!fs.existsSync(ORDERS_FILE)) {
+        fs.writeFileSync(ORDERS_FILE, JSON.stringify([], null, 2));
+    }
+    if (!fs.existsSync('uploads')) {
+        fs.mkdirSync('uploads');
+    }
+};
+initFiles();
 
 // --- មុខងារជំនួយសម្រាប់អាន/សរសេរ File JSON ---
 const safeReadJSON = (filePath, defaultContent) => {
     try {
         if (!fs.existsSync(filePath)) return defaultContent;
         const content = fs.readFileSync(filePath, 'utf8');
-        if (!content.trim()) return defaultContent;
-        return JSON.parse(content);
+        return content.trim() ? JSON.parse(content) : defaultContent;
     } catch (err) {
         console.error(`បញ្ហាអាន File ${filePath}:`, err.message);
         return defaultContent;
@@ -32,10 +43,13 @@ const safeReadJSON = (filePath, defaultContent) => {
 };
 
 const safeWriteJSON = (filePath, data) => {
-    fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+    try {
+        fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+    } catch (err) {
+        console.error(`បញ្ហាសរសេរ File ${filePath}:`, err.message);
+    }
 };
 
-// មុខងារបម្លែងរូបភាពទៅជា Base64 string
 const fileToBase64 = (filePath) => {
     const bitmap = fs.readFileSync(filePath);
     const extension = path.extname(filePath).replace('.', '');
@@ -43,15 +57,10 @@ const fileToBase64 = (filePath) => {
     return `data:image/${extension};base64,${base64Content}`;
 };
 
-// --- ការកំណត់ Multer សម្រាប់ Upload បណ្តោះអាសន្ន ---
+// 2. ការកំណត់ Multer សម្រាប់ Upload បណ្តោះអាសន្ន
 const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        if (!fs.existsSync('uploads')) fs.mkdirSync('uploads');
-        cb(null, 'uploads/');
-    },
-    filename: (req, file, cb) => {
-        cb(null, Date.now() + '-' + file.originalname);
-    }
+    destination: (req, file, cb) => cb(null, 'uploads/'),
+    filename: (req, file, cb) => cb(null, Date.now() + '-' + file.originalname)
 });
 const upload = multer({ storage });
 
@@ -62,13 +71,11 @@ app.post('/api/send-telegram', async (req, res) => {
         const BOT_TOKEN = '8227092903:AAFpSAV1ZRr8WRLCD23wCHhS_3teAEN_1SI'; 
         const CHAT_ID = '7026983728';
 
-        const telegramUrl = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
-        await axios.post(telegramUrl, {
+        await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
             chat_id: CHAT_ID,
             text: message,
             parse_mode: 'HTML'
         });
-
         res.json({ success: true, message: 'ផ្ញើទៅ Telegram រួចរាល់!' });
     } catch (error) {
         console.error('Telegram Error:', error.message);
@@ -91,10 +98,9 @@ app.post('/api/upload', upload.array('images', 5), (req, res) => {
     const { type, name, price, cost, category, detail, title, stock } = req.body;
     let data = safeReadJSON(DATA_FILE, { products: [], banners: [] });
 
-    // បម្លែង Files ទៅជា Base64 និងលុប File ចេញពី folder ភ្លាមៗ
     const base64Images = req.files ? req.files.map(f => {
         const b64 = fileToBase64(f.path);
-        fs.unlinkSync(f.path); // លុប File ចេញដើម្បីកុំឱ្យពេញ Storage
+        fs.unlinkSync(f.path); // លុប File ចេញភ្លាមដើម្បីសន្សំទំហំ Disk
         return b64;
     }) : [];
 
@@ -131,7 +137,6 @@ app.put('/api/update/:type/:id', upload.array('images', 5), (req, res) => {
         if (req.body.update_type === 'stock_only') {
             data.products[index].stock = parseInt(req.body.stock);
         } else {
-            // ឆែកមើលបើមានការ upload រូបថ្មី
             let finalImages;
             if (req.files && req.files.length > 0) {
                 finalImages = req.files.map(f => {
@@ -146,17 +151,26 @@ app.put('/api/update/:type/:id', upload.array('images', 5), (req, res) => {
             if (type === 'product') {
                 data.products[index] = { 
                     ...data.products[index], 
-                    ...req.body, 
-                    price: parseFloat(req.body.price),
-                    cost: parseFloat(req.body.cost),
+                    name: req.body.name || data.products[index].name,
+                    category: req.body.category || data.products[index].category,
+                    detail: req.body.detail || data.products[index].detail,
+                    stock: parseInt(req.body.stock) || 0,
+                    price: parseFloat(req.body.price) || 0,
+                    cost: parseFloat(req.body.cost) || 0,
                     images: finalImages 
                 };
             } else {
-                data.banners[index] = { ...data.banners[index], title: req.body.title, image: finalImages[0] };
+                data.banners[index] = { 
+                    ...data.banners[index], 
+                    title: req.body.title, 
+                    image: finalImages[0] 
+                };
             }
         }
         safeWriteJSON(DATA_FILE, data);
         res.json({ success: true });
+    } else {
+        res.status(404).json({ success: false, message: "Item not found" });
     }
 });
 
@@ -177,7 +191,7 @@ app.post('/api/orders', upload.single('payslip'), (req, res) => {
 
         if (req.file) {
             payslipBase64 = fileToBase64(req.file.path);
-            fs.unlinkSync(req.file.path); // លុប file ចេញ
+            fs.unlinkSync(req.file.path);
         }
         
         const today = new Date().toISOString().split('T')[0];
@@ -185,7 +199,11 @@ app.post('/api/orders', upload.single('payslip'), (req, res) => {
         
         const newOrder = {
             orderId: Date.now(),
-            ...orderData,
+            customerName: orderData.customerName,
+            phoneNumber: orderData.phoneNumber,
+            address: orderData.address,
+            productId: orderData.productId,
+            productName: orderData.productName,
             quantity: parseInt(orderData.qty || orderData.quantity) || 1,
             total: parseFloat(orderData.total) || 0,
             payslip: payslipBase64,
@@ -201,7 +219,7 @@ app.post('/api/orders', upload.single('payslip'), (req, res) => {
             let data = safeReadJSON(DATA_FILE, { products: [], banners: [] });
             const pIdx = data.products.findIndex(p => p.id.toString() === orderData.productId.toString());
             if (pIdx !== -1) {
-                const buyQty = parseInt(orderData.qty) || 1;
+                const buyQty = parseInt(orderData.qty || orderData.quantity) || 1;
                 if (data.products[pIdx].stock >= buyQty) {
                     data.products[pIdx].stock -= buyQty;
                     safeWriteJSON(DATA_FILE, data);
@@ -215,6 +233,7 @@ app.post('/api/orders', upload.single('payslip'), (req, res) => {
     }
 });
 
+// រាល់ពេលកែ Status វានឹងកែក្នុង JSON ភ្លាម
 app.patch('/api/orders/:id/status', (req, res) => {
     let orders = safeReadJSON(ORDERS_FILE, []);
     const index = orders.findIndex(o => o.orderId.toString() === req.params.id);
@@ -222,6 +241,8 @@ app.patch('/api/orders/:id/status', (req, res) => {
         orders[index].status = req.body.status;
         safeWriteJSON(ORDERS_FILE, orders);
         res.json({ success: true });
+    } else {
+        res.status(404).json({ success: false });
     }
 });
 
