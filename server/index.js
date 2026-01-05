@@ -4,302 +4,176 @@ const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
-const FormData = require('form-data');
+require('dotenv').config();
 
 const app = express();
 
-// ================= 1. Configuration & Middleware =================
+// --- ១. Configuration ---
 app.use(cors());
-app.use(express.json()); 
-app.use(express.urlencoded({ extended: true }));
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use(express.json({ limit: '50mb' })); // ចាំបាច់សម្រាប់ទទួល Base64 ធំៗ
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-const DATA_FILE = 'data.json';
-const ORDERS_FILE = 'orders.json';
+const DATA_FILE = path.join(__dirname, 'data.json');
 
-// Telegram Configuration
-const BOT_TOKEN = '8227092903:AAFpSAV1ZRr8WRLCD23wCHhS_3teAEN_1SI'; 
-const CHAT_ID = '7026983728';
+// កំណត់ Multer ទុកក្នុង Memory (ដើម្បីបម្លែងទៅ Base64 ភ្លាមៗ)
+const upload = multer({ storage: multer.memoryStorage() });
 
-// បង្កើត Folder និង File ចាំបាច់ពេល Server ចាប់ផ្តើម
-const initFiles = () => {
-    if (!fs.existsSync('uploads')) fs.mkdirSync('uploads');
-    if (!fs.existsSync(DATA_FILE)) fs.writeFileSync(DATA_FILE, JSON.stringify({ products: [], banners: [] }, null, 2));
-    if (!fs.existsSync(ORDERS_FILE)) fs.writeFileSync(ORDERS_FILE, JSON.stringify([], null, 2));
-};
-initFiles();
-
-// Helper functions សម្រាប់អាន និងសរសេរ JSON
-const safeReadJSON = (filePath, defaultContent) => {
+// --- ២. Helper Functions ---
+const readData = () => {
     try {
-        if (!fs.existsSync(filePath)) return defaultContent;
-        const content = fs.readFileSync(filePath, 'utf8');
-        return content.trim() ? JSON.parse(content) : defaultContent;
+        if (!fs.existsSync(DATA_FILE)) return { products: [], banners: [], orders: [] };
+        const content = fs.readFileSync(DATA_FILE, 'utf8');
+        return content.trim() ? JSON.parse(content) : { products: [], banners: [], orders: [] };
     } catch (err) {
-        return defaultContent;
+        return { products: [], banners: [], orders: [] };
     }
 };
 
-const safeWriteJSON = (filePath, data) => {
-    try {
-        fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
-    } catch (err) {
-        console.error(`Error writing ${filePath}:`, err.message);
-    }
+const writeData = (data) => {
+    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
 };
 
-// រៀបចំការរក្សាទុករូបភាព (Multer)
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => cb(null, 'uploads/'),
-    filename: (req, file, cb) => {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, uniqueSuffix + path.extname(file.originalname));
-    }
-});
-const upload = multer({ storage });
+// --- ៣. API Routes ---
 
-// ================= 2. API Product & Banner Management =================
-
-// ទាញទិន្នន័យទាំងអស់ (Products, Banners, Orders)
+// Get All Data (Products, Banners, Orders)
 app.get('/api/data', (req, res) => {
-    const data = safeReadJSON(DATA_FILE, { products: [], banners: [] });
-    const orders = safeReadJSON(ORDERS_FILE, []);
-    res.json({ products: data.products, banners: data.banners, orders: orders });
+    res.json(readData());
 });
 
-// បង្កើតថ្មី (Product ឬ Banner)
-app.post('/api/upload', upload.any(), (req, res) => {
-    try {
-        const { type, name, price, cost, category, detail, title, stock } = req.body;
-        let data = safeReadJSON(DATA_FILE, { products: [], banners: [] });
-        const savedFilenames = req.files ? req.files.map(f => f.filename) : [];
+// Upload Product or Banner (Base64)
+app.post('/api/upload', upload.array('images', 5), (req, res) => {
+    const { type, name, price, cost, category, detail, stock, title } = req.body;
+    const data = readData();
 
-        if (type === 'product') {
-            data.products.push({
-                id: Date.now(),
-                name, 
-                price: parseFloat(price) || 0, 
-                cost: parseFloat(cost) || 0,
-                category, 
-                detail,
-                stock: parseInt(stock) || 0,
-                images: savedFilenames 
-            });
-        } else if (type === 'banner') {
-            data.banners.push({ 
-                id: Date.now(), 
-                title, 
-                image: savedFilenames[0] || '' 
-            });
-        }
-        safeWriteJSON(DATA_FILE, data);
-        res.json({ success: true });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
+    // បម្លែង Buffer ទៅជា Base64
+    const base64Images = req.files ? req.files.map(f => 
+        `data:${f.mimetype};base64,${f.buffer.toString('base64')}`
+    ) : [];
+
+    if (type === 'product') {
+        data.products.push({
+            id: Date.now().toString(),
+            name,
+            price: parseFloat(price),
+            cost: parseFloat(cost || 0),
+            category,
+            detail,
+            stock: parseInt(stock || 0),
+            images: base64Images // រក្សាទុកក្នុង Array
+        });
+    } else if (type === 'banner') {
+        data.banners.push({
+            id: Date.now().toString(),
+            title,
+            image: base64Images[0] || ''
+        });
     }
+
+    writeData(data);
+    res.json({ success: true, message: 'បានរក្សាទុកក្នុង data.json រួចរាល់' });
 });
 
-// កែប្រែ Product
-app.put('/api/update/product/:id', upload.any(), (req, res) => {
-    try {
-        const { id } = req.params;
-        const { name, price, cost, category, detail, stock } = req.body;
-        let data = safeReadJSON(DATA_FILE, { products: [], banners: [] });
-        
-        const idx = data.products.findIndex(p => p.id.toString() === id);
-        if (idx !== -1) {
-            let finalImages = data.products[idx].images;
-            
-            if (req.files && req.files.length > 0) {
-                // លុបរូបភាពចាស់ៗ
-                if (Array.isArray(data.products[idx].images)) {
-                    data.products[idx].images.forEach(imgName => {
-                        const oldPath = path.join(__dirname, 'uploads', imgName);
-                        if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
-                    });
-                }
-                finalImages = req.files.map(f => f.filename);
-            }
+// Update Product (ស្ដុក ឬ ព័ត៌មានលម្អិត)
+app.put('/api/update/product/:id', upload.array('images', 5), (req, res) => {
+    const { id } = req.params;
+    const data = readData();
+    const idx = data.products.findIndex(p => p.id === id);
 
-            data.products[idx] = {
-                ...data.products[idx],
-                name: name || data.products[idx].name,
-                price: price ? parseFloat(price) : data.products[idx].price,
-                cost: cost ? parseFloat(cost) : data.products[idx].cost,
-                category: category || data.products[idx].category,
-                detail: detail || data.products[idx].detail,
-                stock: stock !== undefined ? parseInt(stock) : data.products[idx].stock,
-                images: finalImages
+    if (idx !== -1) {
+        // បើផ្ញើមកតែ Stock (សម្រាប់ប៊ូតុង + / - ក្នុង Table)
+        if (req.body.stock !== undefined && Object.keys(req.body).length === 1) {
+            data.products[idx].stock = parseInt(req.body.stock);
+        } else {
+            // បើកែប្រែក្នុង Modal
+            const newImages = req.files && req.files.length > 0 
+                ? req.files.map(f => `data:${f.mimetype};base64,${f.buffer.toString('base64')}`)
+                : data.products[idx].images;
+
+            data.products[idx] = { 
+                ...data.products[idx], 
+                ...req.body, 
+                price: parseFloat(req.body.price),
+                cost: parseFloat(req.body.cost),
+                stock: parseInt(req.body.stock),
+                images: newImages 
             };
-            
-            safeWriteJSON(DATA_FILE, data);
-            res.json({ success: true });
-        } else {
-            res.status(404).json({ success: false, error: "មិនឃើញផលិតផលនេះទេ" });
         }
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
+        writeData(data);
+        return res.json({ success: true });
+    }
+    res.status(404).json({ message: 'រកមិនឃើញទំនិញ' });
+});
+
+// Submit Order (ពីខាង Customer)
+app.post('/api/orders', upload.single('payslip'), (req, res) => {
+    const data = readData();
+    const payslipBase64 = req.file 
+        ? `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}` 
+        : null;
+
+    const newOrder = {
+        id: Date.now().toString(),
+        ...req.body,
+        payslip: payslipBase64,
+        status: 'Pending',
+        date: new Date().toISOString()
+    };
+
+    data.orders.unshift(newOrder);
+
+    // កាត់ស្តុកភ្លាមៗ
+    if (req.body.productId) {
+        const pIdx = data.products.findIndex(p => p.id === req.body.productId);
+        if (pIdx !== -1) {
+            data.products[pIdx].stock -= parseInt(req.body.qty || 1);
+        }
+    }
+
+    writeData(data);
+    res.json({ success: true, orderId: newOrder.id });
+});
+
+// Update Order Status
+app.patch('/api/orders/:id/status', (req, res) => {
+    const data = readData();
+    const order = data.orders.find(o => o.id === req.params.id);
+    if (order) {
+        order.status = req.body.status;
+        writeData(data);
+        res.json({ success: true });
+    } else {
+        res.status(404).json({ message: 'Order not found' });
     }
 });
 
-// កែប្រែ Banner
-app.put('/api/update/banner/:id', upload.single('images'), (req, res) => {
-    try {
-        const { id } = req.params;
-        const { title } = req.body;
-        let data = safeReadJSON(DATA_FILE, { products: [], banners: [] });
-        
-        const idx = data.banners.findIndex(b => b.id.toString() === id);
-        if (idx !== -1) {
-            if (req.file) {
-                // លុបរូបចាស់
-                const oldImgName = data.banners[idx].image;
-                if (oldImgName) {
-                    const oldPath = path.join(__dirname, 'uploads', oldImgName);
-                    if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
-                }
-                data.banners[idx].image = req.file.filename;
-            }
-            data.banners[idx].title = title || data.banners[idx].title;
-            
-            safeWriteJSON(DATA_FILE, data);
-            res.json({ success: true, message: "Banner updated!" });
-        } else {
-            res.status(404).json({ success: false, message: "Banner not found" });
-        }
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// លុប (Product ឬ Banner)
+// Delete Item
 app.delete('/api/delete/:type/:id', (req, res) => {
     const { type, id } = req.params;
-    let data = safeReadJSON(DATA_FILE, { products: [], banners: [] });
-    const key = type === 'product' ? 'products' : 'banners';
-    
-    const itemToDelete = data[key].find(i => i.id == id); 
-    
-    if (itemToDelete) {
-        // លុបរូបភាពចេញពី Folder
-        const imgs = type === 'product' ? (itemToDelete.images || []) : [itemToDelete.image];
-        imgs.forEach(imgName => {
-            if (imgName) {
-                const fullPath = path.join(__dirname, 'uploads', imgName);
-                if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
-            }
-        });
-        
-        data[key] = data[key].filter(i => i.id != id);
-        safeWriteJSON(DATA_FILE, data);
-        return res.json({ success: true, message: `${type} deleted successfully` });
-    }
-    res.status(404).json({ success: false, message: "រកទិន្នន័យមិនឃើញ!" });
-});
+    const data = readData();
+    const key = type === 'product' ? 'products' : (type === 'banner' ? 'banners' : 'orders');
 
-// ================= 3. Order Management =================
-
-// ទទួលការកុម្ម៉ង់ថ្មី (Customer Side)
-app.post('/api/orders', upload.any(), async (req, res) => {
-    try {
-        const orderData = req.body;
-        const payslipFile = req.files ? req.files.find(f => f.fieldname === 'payslip') : null;
-        const today = new Date().toLocaleString('en-GB', { timeZone: 'Asia/Phnom_Penh' });
-        
-        const newOrder = {
-            orderId: Date.now(),
-            customerName: orderData.customerName,
-            phoneNumber: orderData.customerPhone || orderData.phoneNumber,
-            address: orderData.customerAddress || orderData.address,
-            location: orderData.location,
-            paymentMethod: orderData.paymentMethod,
-            productName: orderData.productName,
-            quantity: parseInt(orderData.qty) || 1,
-            total: parseFloat(orderData.total) || 0,
-            payslip: payslipFile ? payslipFile.filename : null,
-            status: 'Pending',
-            date: today
-        };
-
-        // ១. កាត់ស្តុក
-        if (orderData.productId) {
-            let data = safeReadJSON(DATA_FILE, { products: [], banners: [] });
-            const pIdx = data.products.findIndex(p => p.id.toString() === orderData.productId.toString());
-            if (pIdx !== -1) {
-                if (data.products[pIdx].stock < newOrder.quantity) {
-                    return res.status(400).json({ success: false, message: "ទំនិញនេះអស់ពីស្តុកហើយ!" });
-                }
-                data.products[pIdx].stock -= newOrder.quantity;
-                safeWriteJSON(DATA_FILE, data);
-            }
-        }
-
-        // ២. រក្សាទុក Order
-        let orders = safeReadJSON(ORDERS_FILE, []);
-        orders.unshift(newOrder); 
-        safeWriteJSON(ORDERS_FILE, orders);
-
-        // ៣. ផ្ញើទៅ Telegram
-        try {
-            const message = `🔔 <b>ការកុម្ម៉ង់ថ្មី!</b>\n` +
-                            `--------------------------\n` +
-                            `👤 ឈ្មោះ: ${newOrder.customerName}\n` +
-                            `📞 លេខ: ${newOrder.phoneNumber}\n` +
-                            `📦 ទំនិញ: ${newOrder.productName} (x${newOrder.quantity})\n` +
-                            `💰 <b>សរុប: $${newOrder.total.toFixed(2)}</b>\n` +
-                            `💳 ទូទាត់: ${newOrder.paymentMethod}\n` +
-                            `📍 ទីតាំង: ${newOrder.location}\n` +
-                            `--------------------------\n` +
-                            `⏰ ${today}`;
-
-            await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-                chat_id: CHAT_ID, text: message, parse_mode: 'HTML'
-            });
-
-            if (payslipFile && fs.existsSync(payslipFile.path)) {
-                const teleFormData = new FormData();
-                teleFormData.append('chat_id', CHAT_ID);
-                teleFormData.append('photo', fs.createReadStream(payslipFile.path));
-                teleFormData.append('caption', `🧾 វិក្កយបត្រពី៖ ${newOrder.customerName}\nID: ${newOrder.orderId}`);
-
-                await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, teleFormData, {
-                    headers: teleFormData.getHeaders()
-                });
-            }
-        } catch (teleErr) { console.error("Telegram error:", teleErr.message); }
-
-        res.json({ success: true, orderId: newOrder.orderId });
-    } catch (error) {
-        res.status(500).json({ success: false, error: "Server Error" });
-    }
-});
-
-// Update ស្ថានភាព Order (Admin)
-app.patch('/api/orders/:id/status', (req, res) => {
-    let orders = safeReadJSON(ORDERS_FILE, []);
-    const index = orders.findIndex(o => o.orderId.toString() === req.params.id);
-    if (index !== -1) {
-        orders[index].status = req.body.status;
-        safeWriteJSON(ORDERS_FILE, orders);
-        res.json({ success: true });
-    } else { res.status(404).json({ success: false }); }
-});
-
-// លុប Order
-app.delete('/api/orders/:id', (req, res) => {
-    let orders = safeReadJSON(ORDERS_FILE, []);
-    const orderToDelete = orders.find(o => o.orderId.toString() === req.params.id);
-    if (orderToDelete && orderToDelete.payslip) {
-        const fullPath = path.join(__dirname, 'uploads', orderToDelete.payslip);
-        if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
-    }
-    const filtered = orders.filter(o => o.orderId.toString() !== req.params.id);
-    safeWriteJSON(ORDERS_FILE, filtered);
+    data[key] = data[key].filter(item => item.id !== id);
+    writeData(data);
     res.json({ success: true });
 });
 
-// ================= 4. Start Server =================
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-    console.log(`🚀 Server is running on http://localhost:${PORT}`);
+// Telegram Notification (Optional)
+app.post('/api/send-telegram', async (req, res) => {
+    try {
+        const { message } = req.body;
+        const BOT_TOKEN = '8227092903:AAFpSAV1ZRr8WRLCD23wCHhS_3teAEN_1SI'; 
+        const CHAT_ID = '7026983728';
+        await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+            chat_id: CHAT_ID,
+            text: message,
+            parse_mode: 'HTML'
+        });
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ success: false });
+    }
 });
+
+// --- ៤. Start Server ---
+const PORT = 5000;
+app.listen(PORT, () => console.log(`🚀 Base64 JSON Server running on port ${PORT}`));
