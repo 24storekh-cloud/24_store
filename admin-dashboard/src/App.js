@@ -307,9 +307,7 @@ const AdminDashboard = () => {
           </div>
         )}
 
-        {activeTab === 'banners' && (
-          <BannerSection banners={data.banners} onDelete={(id) => handleDelete('banner', id)} onUpload={fetchData} getCleanUrl={getCleanUrl} />
-        )}
+        {activeTab === 'banners' && (<BannerSection banners={data.banners} onDelete={(id) => handleDelete('banner', id)} onUpload={fetchData} getCleanUrl={getCleanUrl} />)}
 
         {activeTab === 'finance' && (
           <FinanceReport orders={data.orders} products={data.products} />
