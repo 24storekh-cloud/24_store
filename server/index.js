@@ -3,114 +3,167 @@ const cors = require('cors');
 const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
+const axios = require('axios');
+
 const app = express();
-
-// --- ១. Configuration ---
 app.use(cors());
-app.use(express.json({ limit: '50mb' })); // បង្កើន limit ដើម្បីទទួលរូបភាព Base64 ធំៗ
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.use(express.json());
+app.use('/uploads', express.static('uploads'));
 
-const DATA_FILE = path.join(__dirname, 'data.json');
+// --- កំណត់ URL ឱ្យប្រែប្រួលតាមបរិស្ថាន (Local vs Render) ---
+const BASE_URL = process.env.NODE_ENV === 'production' 
+    ? 'https://your-backend-name.onrender.com' // <-- ដូរឈ្មោះនេះចេញ
+    : 'http://localhost:5000';
 
-// បង្កើត Folder សម្រាប់ទុក File បណ្តោះអាសន្ន (Multer ត្រូវការ)
-const uploadDir = path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
+const DATA_FILE = 'data.json';
+const ORDERS_FILE = 'orders.json';
 
+// --- មុខងារជំនួយសម្រាប់អាន/សរសេរ File JSON ---
+const safeReadJSON = (filePath, defaultContent) => {
+    try {
+        if (!fs.existsSync(filePath)) return defaultContent;
+        const content = fs.readFileSync(filePath, 'utf8');
+        return content.trim() ? JSON.parse(content) : defaultContent;
+    } catch (err) {
+        return defaultContent;
+    }
+};
+
+const safeWriteJSON = (filePath, data) => {
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+};
+
+// --- ការកំណត់ Multer ---
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, 'uploads/'),
-  filename: (req, file, cb) => cb(null, Date.now() + '-' + file.originalname)
+    destination: (req, file, cb) => {
+        if (!fs.existsSync('uploads')) fs.mkdirSync('uploads');
+        cb(null, 'uploads/');
+    },
+    filename: (req, file, cb) => {
+        cb(null, Date.now() + '-' + file.originalname);
+    }
 });
 const upload = multer({ storage });
 
-// --- ២. Helper Functions ---
-const readData = () => {
-  if (!fs.existsSync(DATA_FILE)) return { products: [], banners: [], orders: [] };
-  return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-};
+// ================= 1. Telegram Notification =================
+app.post('/api/send-telegram', async (req, res) => {
+    try {
+        const { message } = req.body;
+        const BOT_TOKEN = process.env.BOT_TOKEN || '8227092903:AAFpSAV1ZRr8WRLCD23wCHhS_3teAEN_1SI'; 
+        const CHAT_ID = process.env.CHAT_ID || '7026983728';
 
-const writeData = (data) => {
-  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-};
+        await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+            chat_id: CHAT_ID,
+            text: message,
+            parse_mode: 'HTML'
+        });
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ success: false });
+    }
+});
 
-// មុខងារបម្លែង File ទៅជា Base64 string
-const fileToBase64 = (filePath) => {
-  const bitmap = fs.readFileSync(filePath);
-  const extension = path.extname(filePath).replace('.', '');
-  return `data:image/${extension};base64,${bitmap.toString('base64')}`;
-};
-
-// --- ៣. API Routes ---
-
-// Get All Data
+// ================= 2. Product Management =================
 app.get('/api/data', (req, res) => {
-  res.json(readData());
+    const data = safeReadJSON(DATA_FILE, { products: [], banners: [] });
+    const orders = safeReadJSON(ORDERS_FILE, []);
+    res.json({ ...data, orders });
 });
 
-// Upload API (Products & Banners)
-// ប្រើ upload.array('images') ដើម្បីឱ្យត្រូវជាមួយ Frontend
-app.post('/api/upload', upload.array('images'), (req, res) => {
-  const { type, title, name, price, category, detail, stock } = req.body;
-  const data = readData();
-  
-  // បម្លែងរាល់រូបភាពដែល Upload មកជា Base64 រួចលុប File ចោលវិញ
-  const base64Images = req.files.map(file => {
-    const base64 = fileToBase64(file.path);
-    fs.unlinkSync(file.path); // លុប File ចេញពី Server ក្រោយបម្លែងរួច
-    return base64;
-  });
+app.post('/api/upload', upload.array('images', 5), (req, res) => {
+    const { type, name, price, cost, category, detail, title, stock } = req.body;
+    let data = safeReadJSON(DATA_FILE, { products: [], banners: [] });
+    
+    // កែទីនេះ៖ ប្រើ BASE_URL ជំនួស localhost
+    const imageUrls = req.files ? req.files.map(f => `${BASE_URL}/uploads/${f.filename}`) : [];
 
-  if (type === 'banner') {
-    const newBanner = {
-      id: Date.now().toString(),
-      title,
-      image: base64Images[0] // Banner យករូបទី ១
-    };
-    data.banners.push(newBanner);
-  } else if (type === 'product') {
-    const newProduct = {
-      id: Date.now().toString(),
-      name,
-      price: parseFloat(price),
-      category,
-      detail,
-      stock: parseInt(stock),
-      images: base64Images // Product រក្សាទុកជា Array រូបភាព
-    };
-    data.products.push(newProduct);
-  }
-
-  writeData(data);
-  res.json({ success: true, message: 'Upload successful with Base64' });
-});
-
-// Update Order Status
-app.patch('/api/orders/:id/status', (req, res) => {
-  const { id } = req.params;
-  const { status } = req.body;
-  const data = readData();
-  const order = data.orders.find(o => o.id === id);
-  if (order) {
-    order.status = status;
-    writeData(data);
+    if (type === 'product') {
+        data.products.push({
+            id: Date.now(),
+            name, price: parseFloat(price), cost: parseFloat(cost),
+            category, detail, stock: parseInt(stock),
+            images: imageUrls
+        });
+    } else {
+        data.banners.push({ id: Date.now(), title, image: imageUrls[0] || '' });
+    }
+    safeWriteJSON(DATA_FILE, data);
     res.json({ success: true });
-  } else {
-    res.status(404).json({ message: 'Order not found' });
-  }
 });
 
-// Delete Item (Product, Banner, Order)
+app.put('/api/update/:type/:id', upload.array('images', 5), (req, res) => {
+    const { type, id } = req.params;
+    let data = safeReadJSON(DATA_FILE, { products: [], banners: [] });
+    const col = type === 'product' ? 'products' : 'banners';
+    const idx = data[col].findIndex(item => item.id.toString() === id);
+
+    if (idx !== -1) {
+        if (req.body.update_type === 'stock_only') {
+            data.products[idx].stock = parseInt(req.body.stock);
+        } else {
+            const newImages = req.files && req.files.length > 0 
+                ? req.files.map(f => `${BASE_URL}/uploads/${f.filename}`) 
+                : (type === 'product' ? data[col][idx].images : [data[col][idx].image]);
+            
+            data[col][idx] = { ...data[col][idx], ...req.body, images: newImages };
+        }
+        safeWriteJSON(DATA_FILE, data);
+        res.json({ success: true });
+    }
+});
+
+// ================= 3. Order Management =================
+app.post('/api/orders', upload.single('payslip'), (req, res) => {
+    try {
+        const orderData = req.body;
+        const payslipUrl = req.file ? `${BASE_URL}/uploads/${req.file.filename}` : null;
+        const today = new Date().toISOString().split('T')[0];
+
+        let orders = safeReadJSON(ORDERS_FILE, []);
+        const newOrder = {
+            orderId: Date.now(),
+            ...orderData,
+            payslip: payslipUrl,
+            status: 'Pending',
+            date: today
+        };
+
+        orders.unshift(newOrder); 
+        safeWriteJSON(ORDERS_FILE, orders);
+
+        // កាត់ស្តុក
+        if (orderData.productId) {
+            let data = safeReadJSON(DATA_FILE, { products: [], banners: [] });
+            const pIdx = data.products.findIndex(p => p.id.toString() === orderData.productId.toString());
+            if (pIdx !== -1) {
+                data.products[pIdx].stock -= parseInt(orderData.qty || 1);
+                safeWriteJSON(DATA_FILE, data);
+            }
+        }
+        res.json({ success: true, orderId: newOrder.orderId });
+    } catch (error) {
+        res.status(500).json({ success: false });
+    }
+});
+
 app.delete('/api/delete/:type/:id', (req, res) => {
-  const { type, id } = req.params;
-  const data = readData();
-  
-  if (type === 'product') data.products = data.products.filter(p => p.id !== id);
-  else if (type === 'banner') data.banners = data.banners.filter(b => b.id !== id);
-  else if (type === 'order') data.orders = data.orders.filter(o => o.id !== id);
-
-  writeData(data);
-  res.json({ success: true });
+    const { type, id } = req.params;
+    let data = safeReadJSON(DATA_FILE, { products: [], banners: [] });
+    const key = type === 'product' ? 'products' : 'banners';
+    data[key] = data[key].filter(i => i.id.toString() !== id);
+    safeWriteJSON(DATA_FILE, data);
+    res.json({ success: true });
 });
 
-// --- ៤. Start Server ---
+app.patch('/api/orders/:id/status', (req, res) => {
+    let orders = safeReadJSON(ORDERS_FILE, []);
+    const idx = orders.findIndex(o => o.orderId.toString() === req.params.id);
+    if (idx !== -1) {
+        orders[idx].status = req.body.status;
+        safeWriteJSON(ORDERS_FILE, orders);
+        res.json({ success: true });
+    }
+});
+
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Server on ${BASE_URL}`));
