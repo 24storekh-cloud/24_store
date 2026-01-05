@@ -10,7 +10,7 @@ const BannerSection = ({ banners, onDelete, onUpload, getCleanUrl }) => {
   const [preview, setPreview] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
 
-  // ១. មុខងារសម្អាត Memory (Revoke URL) ដើម្បីការពារ Browser យឺត
+  // ១. មុខងារសម្អាត Memory (Revoke URL)
   useEffect(() => {
     return () => {
       if (preview && preview.startsWith('blob:')) {
@@ -19,11 +19,22 @@ const BannerSection = ({ banners, onDelete, onUpload, getCleanUrl }) => {
     };
   }, [preview]);
 
-  // ២. មុខងាររៀបចំ URL រូបភាពឱ្យបានត្រឹមត្រូវ
+  // ២. មុខងាររៀបចំ URL រូបភាព (កែសម្រួលថ្មីដើម្បីដោះស្រាយ HTTPS Error)
   const renderBannerImage = useCallback((imgName) => {
     if (!imgName) return 'https://placehold.co/800x400?text=No+Image';
     
-    // បើមាន getCleanUrl ពី props (AdminDashboard) ឱ្យប្រើវា
+    // បើសិនជា imgName ជា URL ពេញស្រាប់ (http...)
+    if (typeof imgName === 'string' && imgName.startsWith('http')) {
+      // ប្រសិនបើវេបសាយដើរលើ Vercel (HTTPS) តែ Link ជា HTTP localhost
+      // យើងត្រូវដូរវាទៅតាម API_URL ដែលបានកំណត់ក្នុង config
+      if (imgName.includes('localhost:5000') && !window.location.href.includes('localhost')) {
+         const pathOnly = imgName.split('/uploads/')[1];
+         return `${API_URL}/uploads/${pathOnly}`;
+      }
+      return imgName;
+    }
+
+    // បើមាន getCleanUrl ពី props ឱ្យប្រើវា
     if (getCleanUrl) return getCleanUrl(imgName);
 
     // បើមិនមានទេ រៀបចំ URL ដោយខ្លួនឯង
@@ -45,7 +56,7 @@ const BannerSection = ({ banners, onDelete, onUpload, getCleanUrl }) => {
     if (!file || !title) return toast.error("សូមបំពេញឈ្មោះ និងជ្រើសរើសរូបភាព!");
     
     setIsUploading(true);
-    const loadingToast = toast.loading("កំពុងបង្ហោះ Banner ទៅកាន់ Server...");
+    const loadingToast = toast.loading("កំពុងបង្ហោះ Banner...");
     
     const formData = new FormData();
     formData.append('type', 'banner');
@@ -60,20 +71,16 @@ const BannerSection = ({ banners, onDelete, onUpload, getCleanUrl }) => {
 
       if (res.ok) {
         toast.success("បង្ហោះ Banner ជោគជ័យ!", { id: loadingToast });
-        
-        // សម្អាត Form និងបិទផ្ទាំង Upload
         setTitle(''); 
         setFile(null); 
         setPreview(null); 
         setShowUpload(false);
-        
-        // Call function ឱ្យ Component មេ Update ទិន្នន័យភ្លាមៗ (Auto Update)
         if (onUpload) await onUpload(); 
       } else {
         throw new Error("Upload Failed");
       }
     } catch (error) {
-      toast.error("ការបង្ហោះមានបញ្ហា! សូមពិនិត្យមើលការភ្ជាប់ Server", { id: loadingToast });
+      toast.error("ការបង្ហោះមានបញ្ហា!", { id: loadingToast });
     } finally {
       setIsUploading(false);
     }
@@ -81,7 +88,6 @@ const BannerSection = ({ banners, onDelete, onUpload, getCleanUrl }) => {
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      {/* Header Section */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h3 className="text-2xl font-black text-slate-800 uppercase italic leading-none">Promotion Banners</h3>
@@ -100,7 +106,6 @@ const BannerSection = ({ banners, onDelete, onUpload, getCleanUrl }) => {
         </button>
       </div>
 
-      {/* Form Upload Area */}
       {showUpload && (
         <form onSubmit={handleSubmit} className="bg-white p-8 rounded-[2.5rem] border border-blue-50 shadow-xl space-y-4 animate-in zoom-in-95 duration-300">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
@@ -109,53 +114,38 @@ const BannerSection = ({ banners, onDelete, onUpload, getCleanUrl }) => {
                 <label className="text-[10px] font-black text-slate-400 ml-2 uppercase tracking-widest">Banner Title</label>
                 <input 
                   type="text" 
-                  placeholder="Ex: New Year Sale 50% Off"
-                  className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold focus:ring-2 focus:ring-blue-500 transition-all border border-transparent focus:bg-white"
+                  placeholder="Ex: New Year Sale"
+                  className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold focus:ring-2 focus:ring-blue-500 border border-transparent"
                   value={title} 
                   onChange={(e) => setTitle(e.target.value)}
                   disabled={isUploading}
                 />
               </div>
-              
-              <label className={`flex flex-col items-center justify-center p-8 border-4 border-dashed rounded-[2rem] transition-all cursor-pointer group
-                ${preview ? 'border-blue-100 bg-blue-50/30' : 'border-slate-50 hover:bg-slate-50 hover:border-blue-200'}`}>
-                <Upload className={`${preview ? 'text-blue-500' : 'text-slate-300'} mb-2 group-hover:scale-110 transition-transform`} />
-                <span className="text-[10px] font-black text-slate-400 uppercase text-center tracking-tighter truncate w-full px-4">
-                  {file ? file.name : 'Select Banner Image (Recommend 21:9)'}
+              <label className={`flex flex-col items-center justify-center p-8 border-4 border-dashed rounded-[2rem] cursor-pointer group ${preview ? 'border-blue-100 bg-blue-50/30' : 'border-slate-50 hover:bg-slate-50'}`}>
+                <Upload className={`${preview ? 'text-blue-500' : 'text-slate-300'} mb-2`} />
+                <span className="text-[10px] font-black text-slate-400 uppercase text-center truncate w-full px-4">
+                  {file ? file.name : 'Select Banner Image'}
                 </span>
                 <input type="file" className="hidden" onChange={handleFileChange} accept="image/*" disabled={isUploading} />
               </label>
             </div>
-            
-            {/* Live Preview Area */}
             <div className="relative aspect-[21/9] flex items-center justify-center bg-slate-50 rounded-[2rem] overflow-hidden border border-slate-100 shadow-inner">
               {preview ? (
-                <img src={preview} className="w-full h-full object-cover animate-in fade-in duration-500" alt="Preview" />
+                <img src={preview} className="w-full h-full object-cover animate-in fade-in" alt="Preview" />
               ) : (
-                <div className="text-center p-4">
+                <div className="text-center">
                   <ImageIcon className="text-slate-200 mx-auto mb-2" size={32} />
-                  <p className="text-[10px] font-black text-slate-300 uppercase italic tracking-widest">Live Preview</p>
+                  <p className="text-[10px] font-black text-slate-300 uppercase italic">Live Preview</p>
                 </div>
               )}
             </div>
           </div>
-
-          <button 
-            type="submit" 
-            disabled={isUploading}
-            className="w-full py-5 bg-blue-600 text-white rounded-[2rem] font-black shadow-xl shadow-blue-100 hover:bg-blue-700 disabled:bg-slate-400 disabled:shadow-none flex justify-center items-center gap-3 transition-all active:scale-[0.98] uppercase italic"
-          >
-            {isUploading ? (
-              <>
-                <Loader2 size={20} className="animate-spin" />
-                Processing...
-              </>
-            ) : 'Confirm & Publish Banner'}
+          <button type="submit" disabled={isUploading} className="w-full py-5 bg-blue-600 text-white rounded-[2rem] font-black hover:bg-blue-700 disabled:bg-slate-400 flex justify-center items-center gap-3">
+            {isUploading ? <><Loader2 size={20} className="animate-spin" /> Processing...</> : 'Confirm & Publish'}
           </button>
         </form>
       )}
 
-      {/* Banner Grid Display */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         {banners && banners.length > 0 ? (
           banners.map(b => (
@@ -168,19 +158,13 @@ const BannerSection = ({ banners, onDelete, onUpload, getCleanUrl }) => {
                   onError={(e) => { e.target.src = 'https://placehold.co/800x400?text=Image+Load+Failed'; }}
                 />
               </div>
-              
-              {/* Overlay on Hover */}
-              <div className="absolute inset-0 bg-gradient-to-t from-slate-900/90 via-slate-900/20 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-500 flex flex-col justify-end p-8">
-                <h4 className="text-white text-xl font-black italic uppercase tracking-wide truncate transform translate-y-4 group-hover:translate-y-0 transition-all duration-500">
+              <div className="absolute inset-0 bg-gradient-to-t from-slate-900/90 via-slate-900/20 opacity-0 group-hover:opacity-100 transition-all flex flex-col justify-end p-8">
+                <h4 className="text-white text-xl font-black italic uppercase truncate translate-y-4 group-hover:translate-y-0 transition-all duration-500">
                   {b.title}
                 </h4>
-                <div className="flex justify-between items-center mt-3 transform translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-700">
-                  <p className="text-blue-400 text-[10px] font-black uppercase tracking-widest">Active on Website</p>
-                  <button 
-                    onClick={() => onDelete('banner', b.id || b._id)}
-                    className="p-3 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-all shadow-lg active:scale-90"
-                    title="Delete Banner"
-                  >
+                <div className="flex justify-between items-center mt-3 opacity-0 group-hover:opacity-100 transition-all">
+                  <p className="text-blue-400 text-[10px] font-black uppercase tracking-widest">Active</p>
+                  <button onClick={() => onDelete('banner', b.id || b._id)} className="p-3 bg-red-500 text-white rounded-xl active:scale-90">
                     <Trash2 size={18}/>
                   </button>
                 </div>
@@ -188,11 +172,8 @@ const BannerSection = ({ banners, onDelete, onUpload, getCleanUrl }) => {
             </div>
           ))
         ) : (
-          <div className="col-span-full py-24 text-center bg-white rounded-[3rem] border-4 border-dashed border-slate-50">
-            <div className="bg-slate-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Upload className="text-slate-200" size={32} />
-            </div>
-            <p className="font-black text-slate-300 uppercase italic tracking-widest">No active banners found</p>
+          <div className="col-span-full py-24 text-center bg-white rounded-[3rem] border-4 border-dashed border-slate-50 text-slate-300 font-black uppercase italic">
+            No active banners found
           </div>
         )}
       </div>
