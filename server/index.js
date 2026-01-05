@@ -12,7 +12,7 @@ app.use(cors());
 app.use(express.json()); 
 app.use(express.urlencoded({ extended: true }));
 
-// បើកឱ្យគេចូលមើលរូបភាពតាម URL (ឧទាហរណ៍: http://localhost:5000/uploads/filename.jpg)
+// បើកឱ្យគេចូលមើលរូបភាពតាម URL
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 const DATA_FILE = 'data.json';
@@ -52,15 +52,16 @@ const safeWriteJSON = (filePath, data) => {
     }
 };
 
-// 2. ការកំណត់ Multer សម្រាប់រក្សាទុក File រូបភាពពិតប្រាកដ
+// 2. ការកំណត់ Multer សម្រាប់រក្សាទុក File រូបភាព
 const storage = multer.diskStorage({
     destination: (req, file, cb) => cb(null, 'uploads/'),
     filename: (req, file, cb) => {
-        // បង្កើតឈ្មោះថ្មីការពារជាន់គ្នា: timestamp-random.extension
         const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
         cb(null, uniqueSuffix + path.extname(file.originalname));
     }
 });
+
+// ប្រើ upload.any() ដើម្បីឱ្យបត់បែនបានគ្រប់ឈ្មោះ field (images, image, payslip)
 const upload = multer({ storage });
 
 // ================= 1. API Telegram Notification =================
@@ -93,78 +94,86 @@ app.get('/api/data', (req, res) => {
     });
 });
 
-app.post('/api/upload', upload.array('images', 5), (req, res) => {
-    const { type, name, price, cost, category, detail, title, stock } = req.body;
-    let data = safeReadJSON(DATA_FILE, { products: [], banners: [] });
+// កែប្រែមកប្រើ upload.any() ដើម្បីដោះស្រាយបញ្ហា Unexpected field
+app.post('/api/upload', upload.any(), (req, res) => {
+    try {
+        const { type, name, price, cost, category, detail, title, stock } = req.body;
+        let data = safeReadJSON(DATA_FILE, { products: [], banners: [] });
 
-    // រក្សាទុកតែឈ្មោះ File ក្នុង Array (ឧទាហរណ៍: ["17123456-123.jpg"])
-    const savedFilenames = req.files ? req.files.map(f => f.filename) : [];
+        // ចាប់យកឈ្មោះ file ទាំងអស់ដែលបាន upload
+        const savedFilenames = req.files ? req.files.map(f => f.filename) : [];
 
-    if (type === 'product') {
-        data.products.push({
-            id: Date.now(),
-            name, 
-            price: parseFloat(price) || 0, 
-            cost: parseFloat(cost) || 0,
-            category, 
-            detail,
-            stock: parseInt(stock) || 0,
-            images: savedFilenames // រក្សាទុកឈ្មោះ File
-        });
-    } else {
-        data.banners.push({ 
-            id: Date.now(), 
-            title, 
-            image: savedFilenames[0] || '' // រក្សាទុកឈ្មោះ File តែមួយ
-        });
-    }
-    
-    safeWriteJSON(DATA_FILE, data);
-    res.json({ success: true });
-});
-
-app.put('/api/update/:type/:id', upload.array('images', 5), (req, res) => {
-    const { type, id } = req.params;
-    let data = safeReadJSON(DATA_FILE, { products: [], banners: [] });
-    const collection = type === 'product' ? 'products' : 'banners';
-    const index = data[collection].findIndex(item => item.id.toString() === id);
-
-    if (index !== -1) {
-        if (req.body.update_type === 'stock_only') {
-            data.products[index].stock = parseInt(req.body.stock);
-        } else {
-            let finalImages;
-            // បើមាន Upload រូបភាពថ្មី
-            if (req.files && req.files.length > 0) {
-                finalImages = req.files.map(f => f.filename);
-                // (ជម្រើសបន្ថែម: បងអាចលុបរូបភាពចាស់ពី Folder uploads នៅទីនេះបាន)
-            } else {
-                finalImages = type === 'product' ? data.products[index].images : [data.banners[index].image];
-            }
-            
-            if (type === 'product') {
-                data.products[index] = { 
-                    ...data.products[index], 
-                    name: req.body.name || data.products[index].name,
-                    category: req.body.category || data.products[index].category,
-                    detail: req.body.detail || data.products[index].detail,
-                    stock: parseInt(req.body.stock) || 0,
-                    price: parseFloat(req.body.price) || 0,
-                    cost: parseFloat(req.body.cost) || 0,
-                    images: finalImages 
-                };
-            } else {
-                data.banners[index] = { 
-                    ...data.banners[index], 
-                    title: req.body.title, 
-                    image: finalImages[0] 
-                };
-            }
+        if (type === 'product') {
+            data.products.push({
+                id: Date.now(),
+                name, 
+                price: parseFloat(price) || 0, 
+                cost: parseFloat(cost) || 0,
+                category, 
+                detail,
+                stock: parseInt(stock) || 0,
+                images: savedFilenames 
+            });
+        } else if (type === 'banner') {
+            data.banners.push({ 
+                id: Date.now(), 
+                title, 
+                image: savedFilenames[0] || '' 
+            });
         }
+        
         safeWriteJSON(DATA_FILE, data);
         res.json({ success: true });
-    } else {
-        res.status(404).json({ success: false, message: "Item not found" });
+    } catch (error) {
+        console.error("Upload error:", error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.put('/api/update/:type/:id', upload.any(), (req, res) => {
+    try {
+        const { type, id } = req.params;
+        let data = safeReadJSON(DATA_FILE, { products: [], banners: [] });
+        const collection = type === 'product' ? 'products' : 'banners';
+        const index = data[collection].findIndex(item => item.id.toString() === id);
+
+        if (index !== -1) {
+            if (req.body.update_type === 'stock_only') {
+                data.products[index].stock = parseInt(req.body.stock);
+            } else {
+                let finalImages;
+                if (req.files && req.files.length > 0) {
+                    finalImages = req.files.map(f => f.filename);
+                } else {
+                    finalImages = type === 'product' ? data.products[index].images : [data.banners[index].image];
+                }
+                
+                if (type === 'product') {
+                    data.products[index] = { 
+                        ...data.products[index], 
+                        name: req.body.name || data.products[index].name,
+                        category: req.body.category || data.products[index].category,
+                        detail: req.body.detail || data.products[index].detail,
+                        stock: parseInt(req.body.stock) || 0,
+                        price: parseFloat(req.body.price) || 0,
+                        cost: parseFloat(req.body.cost) || 0,
+                        images: finalImages 
+                    };
+                } else {
+                    data.banners[index] = { 
+                        ...data.banners[index], 
+                        title: req.body.title || data.banners[index].title, 
+                        image: finalImages[0] 
+                    };
+                }
+            }
+            safeWriteJSON(DATA_FILE, data);
+            res.json({ success: true });
+        } else {
+            res.status(404).json({ success: false, message: "Item not found" });
+        }
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
     }
 });
 
@@ -173,13 +182,14 @@ app.delete('/api/delete/:type/:id', (req, res) => {
     let data = safeReadJSON(DATA_FILE, { products: [], banners: [] });
     const key = type === 'product' ? 'products' : 'banners';
     
-    // លុប File រូបភាពចេញពី Folder ដើម្បីសន្សំទំហំ Disk (ជម្រើសល្អបំផុត)
     const itemToDelete = data[key].find(i => i.id.toString() === id);
     if (itemToDelete) {
         const imgs = type === 'product' ? itemToDelete.images : [itemToDelete.image];
         imgs.forEach(imgName => {
-            const fullPath = path.join(__dirname, 'uploads', imgName);
-            if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
+            if (imgName) {
+                const fullPath = path.join(__dirname, 'uploads', imgName);
+                if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
+            }
         });
     }
 
@@ -189,10 +199,12 @@ app.delete('/api/delete/:type/:id', (req, res) => {
 });
 
 // ================= 3. API Order Management =================
-app.post('/api/orders', upload.single('payslip'), (req, res) => {
+app.post('/api/orders', upload.any(), (req, res) => {
     try {
         const orderData = req.body;
-        const payslipFilename = req.file ? req.file.filename : null;
+        // ចាប់យក payslip ពី req.files
+        const payslipFile = req.files ? req.files.find(f => f.fieldname === 'payslip') : null;
+        const payslipFilename = payslipFile ? payslipFile.filename : null;
         
         const today = new Date().toISOString().split('T')[0];
         let orders = safeReadJSON(ORDERS_FILE, []);
@@ -206,7 +218,7 @@ app.post('/api/orders', upload.single('payslip'), (req, res) => {
             productName: orderData.productName,
             quantity: parseInt(orderData.qty || orderData.quantity) || 1,
             total: parseFloat(orderData.total) || 0,
-            payslip: payslipFilename, // រក្សាទុកឈ្មោះ File
+            payslip: payslipFilename,
             status: 'Pending',
             date: today
         };
@@ -214,7 +226,7 @@ app.post('/api/orders', upload.single('payslip'), (req, res) => {
         orders.unshift(newOrder); 
         safeWriteJSON(ORDERS_FILE, orders);
 
-        // --- មុខងារកាត់ស្តុក ---
+        // កាត់ស្តុក
         if (orderData.productId) {
             let data = safeReadJSON(DATA_FILE, { products: [], banners: [] });
             const pIdx = data.products.findIndex(p => p.id.toString() === orderData.productId.toString());

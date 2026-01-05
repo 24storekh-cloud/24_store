@@ -1,29 +1,25 @@
 import React from 'react';
-import { X, Upload } from 'lucide-react';
-import API_URL from '../apiConfig'; // ១. Import API_URL ដើម្បីប្រើលាង URL
+import { X, Upload, Image as ImageIcon } from 'lucide-react';
+import API_URL from '../apiConfig';
 
 const ProductModal = ({ 
   isOpen, isEditMode, formData, setFormData, 
   onClose, onSubmit, onFileChange, previews 
 }) => {
   
-  // ២. បង្កើត Function ជំនួយសម្រាប់លាង URL រូបភាពចាស់ៗ
+  // ១. បង្កើត Function ជំនួយសម្រាប់លាង URL រូបភាពឱ្យបង្ហាញបានត្រឹមត្រូវ
   const getCleanPreviewUrl = (src) => {
     if (!src) return '';
-    // ប្រសិនបើ src ជា Blob (រូបភាពថ្មីដែលទើបជ្រើសរើស) ទុកវាដដែល
+    
+    // បើជា Blob (រូបភាពថ្មីដែលទើបជ្រើសរើសក្នុង Browser)
     if (typeof src === 'string' && src.startsWith('blob:')) return src;
     
-    // ប្រសិនបើ src ជាប់ localhost (រូបភាពចាស់ពី DB)
-    if (typeof src === 'string' && src.includes('localhost:5000')) {
-      return src.replace('http://localhost:5000', API_URL);
-    }
-    
-    // ប្រសិនបើជា Path ខ្លី
-    if (typeof src === 'string' && !src.startsWith('http')) {
-      return `${API_URL}/${src}`;
-    }
-    
-    return src;
+    // បើជា Base64 ចាស់
+    if (typeof src === 'string' && src.startsWith('data:')) return src;
+
+    // បើជាឈ្មោះ File ធម្មតាដែលទាញចេញពី DB (ឧទាហរណ៍: 1735.jpg)
+    // យើងត្រូវភ្ជាប់វាជាមួយ API_URL/uploads/
+    return `${API_URL}/uploads/${src}`;
   };
 
   if (!isOpen) return null;
@@ -38,17 +34,21 @@ const ProductModal = ({
             <h3 className="text-xl font-black text-slate-800 uppercase italic">
               {isEditMode ? 'Edit Product' : 'Add New Product'}
             </h3>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">រៀបចំទិន្នន័យផលិតផល និងតម្លៃដើម</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Management v2.5 • Inventory Control</p>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-white rounded-xl transition-colors text-slate-400 hover:text-red-500">
+          <button 
+            onClick={onClose} 
+            className="p-3 hover:bg-white rounded-2xl transition-all text-slate-400 hover:text-red-500 shadow-sm"
+          >
             <X size={24}/>
           </button>
         </div>
 
         <form onSubmit={onSubmit} className="p-8 space-y-5 max-h-[80vh] overflow-y-auto">
+          
           {/* Name Field */}
           <div className="space-y-2">
-            <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Product Name</label>
+            <label className="text-[10px] font-black text-slate-400 uppercase ml-2 tracking-widest">Product Name</label>
             <input 
               required 
               className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold focus:ring-2 focus:ring-blue-500 transition-all border border-transparent focus:bg-white" 
@@ -61,25 +61,25 @@ const ProductModal = ({
           {/* Pricing Section */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-400 uppercase ml-2 italic">Selling Price ($)</label>
+              <label className="text-[10px] font-black text-slate-400 uppercase ml-2 italic tracking-widest">Selling Price ($)</label>
               <input 
                 required 
                 type="number" 
                 step="0.01"
                 className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold focus:ring-2 focus:ring-blue-500 transition-all border border-transparent focus:bg-white text-emerald-600" 
-                placeholder="តម្លៃលក់ចេញ" 
+                placeholder="0.00" 
                 value={formData.price} 
                 onChange={e => setFormData({...formData, price: e.target.value})} 
               />
             </div>
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-red-400 uppercase ml-2 italic underline">Cost Price ($)</label>
+              <label className="text-[10px] font-black text-red-400 uppercase ml-2 italic underline tracking-widest">Cost Price ($)</label>
               <input 
                 required 
                 type="number" 
                 step="0.01"
                 className="w-full p-4 bg-red-50/30 rounded-2xl outline-none font-bold focus:ring-2 focus:ring-red-500 transition-all border border-transparent focus:bg-white text-red-600" 
-                placeholder="តម្លៃដើម" 
+                placeholder="0.00" 
                 value={formData.cost || ''} 
                 onChange={e => setFormData({...formData, cost: e.target.value})} 
               />
@@ -89,9 +89,9 @@ const ProductModal = ({
           {/* Category & Stock */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Category</label>
+              <label className="text-[10px] font-black text-slate-400 uppercase ml-2 tracking-widest">Category</label>
               <select 
-                className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold cursor-pointer" 
+                className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold cursor-pointer border border-transparent focus:border-blue-500 transition-all" 
                 value={formData.category} 
                 onChange={e => setFormData({...formData, category: e.target.value})}
               >
@@ -102,11 +102,11 @@ const ProductModal = ({
               </select>
             </div>
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Stock Qty</label>
+              <label className="text-[10px] font-black text-slate-400 uppercase ml-2 tracking-widest">Stock Qty</label>
               <input 
                 type="number" 
                 className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold focus:ring-2 focus:ring-blue-500 transition-all border border-transparent focus:bg-white" 
-                placeholder="ចំនួនក្នុងស្តុក" 
+                placeholder="0" 
                 value={formData.stock} 
                 onChange={e => setFormData({...formData, stock: e.target.value})} 
               />
@@ -115,11 +115,10 @@ const ProductModal = ({
 
           {/* Details */}
           <div className="space-y-2">
-            <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Details / Description</label>
+            <label className="text-[10px] font-black text-slate-400 uppercase ml-2 tracking-widest">Description</label>
             <textarea 
-              className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold focus:ring-2 focus:ring-blue-500 transition-all border border-transparent focus:bg-white" 
+              className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold focus:ring-2 focus:ring-blue-500 transition-all border border-transparent focus:bg-white min-h-[100px]" 
               placeholder="ព័ត៌មានលម្អិតពីផលិតផល..." 
-              rows="3" 
               value={formData.detail} 
               onChange={e => setFormData({...formData, detail: e.target.value})}
             ></textarea>
@@ -127,40 +126,45 @@ const ProductModal = ({
 
           {/* Image Upload Area */}
           <div className="space-y-2">
-            <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Product Images</label>
-            <label className="block p-6 border-4 border-dashed border-slate-100 rounded-[2rem] hover:border-blue-200 hover:bg-blue-50/30 transition-all cursor-pointer text-center group">
-              <input type="file" multiple className="hidden" onChange={onFileChange} />
+            <label className="text-[10px] font-black text-slate-400 uppercase ml-2 tracking-widest">Product Images</label>
+            <label className="block p-8 border-4 border-dashed border-slate-100 rounded-[2.5rem] hover:border-blue-200 hover:bg-blue-50/20 transition-all cursor-pointer text-center group">
+              <input type="file" multiple className="hidden" onChange={onFileChange} accept="image/*" />
               <Upload className="mx-auto text-slate-300 group-hover:text-blue-500 group-hover:scale-110 transition-all mb-2" size={32} />
-              <p className="text-[10px] font-black text-slate-400 uppercase group-hover:text-blue-600 transition-colors">ចុចដើម្បីជ្រើសរើសរូបភាព</p>
+              <p className="text-[10px] font-black text-slate-400 uppercase group-hover:text-blue-600 transition-colors">ចុចដើម្បីជ្រើសរើសរូបភាព (អាចលើសពី ១)</p>
             </label>
           </div>
 
-          {/* Image Previews - បានកែសម្រួលដើម្បីឱ្យបង្ហាញរូបភាពបានត្រឹមត្រូវ */}
+          {/* Image Previews Section */}
           {previews && previews.length > 0 && (
-            <div className="flex gap-3 overflow-x-auto py-2 scrollbar-hide">
-              {previews.map((src, i) => (
-                <div key={i} className="relative flex-shrink-0">
-                  <img 
-                    src={getCleanPreviewUrl(src)} 
-                    className="w-20 h-20 rounded-2xl object-cover shadow-md border-2 border-white" 
-                    alt="Preview" 
-                    onError={(e) => { e.target.src = 'https://placehold.co/100x100?text=Error'; }}
-                  />
-                  <div className="absolute top-1 right-1 bg-white rounded-full p-1 shadow-sm">
-                    <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+            <div className="space-y-2">
+              <p className="text-[9px] font-black text-blue-500 uppercase ml-2">Selected Preview ({previews.length})</p>
+              <div className="flex gap-3 overflow-x-auto py-3 px-1 scrollbar-hide">
+                {previews.map((src, i) => (
+                  <div key={i} className="relative flex-shrink-0 animate-in fade-in zoom-in duration-300">
+                    <img 
+                      src={getCleanPreviewUrl(src)} 
+                      className="w-24 h-24 rounded-3xl object-cover shadow-lg border-4 border-white ring-1 ring-slate-100" 
+                      alt={`Preview ${i}`} 
+                      onError={(e) => { e.target.src = 'https://placehold.co/100x100?text=Error'; }}
+                    />
+                    <div className="absolute -top-1 -right-1 bg-blue-600 text-white w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border-2 border-white shadow-sm">
+                      {i + 1}
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           )}
 
           {/* Submit Button */}
-          <button 
-            type="submit" 
-            className="w-full py-5 bg-blue-600 text-white rounded-3xl font-black text-lg hover:bg-blue-700 shadow-xl shadow-blue-200 active:scale-95 transition-all mt-4"
-          >
-            {isEditMode ? 'Update Product' : 'Create Product'}
-          </button>
+          <div className="pt-4 pb-2">
+            <button 
+              type="submit" 
+              className="w-full py-5 bg-blue-600 text-white rounded-[2rem] font-black text-lg hover:bg-blue-700 shadow-xl shadow-blue-100 active:scale-[0.98] transition-all flex items-center justify-center gap-3 uppercase italic"
+            >
+              {isEditMode ? 'Update Database' : 'Publish Product'}
+            </button>
+          </div>
         </form>
       </div>
     </div>

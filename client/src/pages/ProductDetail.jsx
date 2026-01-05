@@ -28,20 +28,14 @@ const ProductDetail = () => {
     paymentMethod: 'បង់ប្រាក់ផ្ទាល់ (COD)'
   });
 
-  // មុខងារជំនួយសម្រាប់រៀបចំ Link រូបភាពឱ្យត្រឹមត្រូវ
   const getImageUrl = (img) => {
     if (!img) return 'https://placehold.co/600x400?text=No+Image';
-    
-    // បើ image ជាប់ localhost ពី database ចាស់ ត្រូវប្តូរទៅ API_URL របស់ Render
     if (typeof img === 'string' && img.includes('localhost:5000')) {
       return img.replace('http://localhost:5000', API_URL);
     }
-    
-    // បើ image ជា path ខ្លី (ឧទាហរណ៍: uploads/abc.jpg)
     if (typeof img === 'string' && !img.startsWith('http')) {
-      return `${API_URL}/${img}`;
+      return `${API_URL}/uploads/${img}`;
     }
-    
     return img;
   };
 
@@ -85,27 +79,18 @@ const ProductDetail = () => {
     setActiveImg((prev) => (prev === 0 ? productImages.length - 1 : prev - 1));
   };
 
-  useEffect(() => {
-    if (productImages.length > 1) {
-      const interval = setInterval(() => { nextSlide(); }, 5000);
-      return () => clearInterval(interval);
-    }
-  }, [nextSlide, productImages.length]);
-
   const deliveryFee = orderForm.location === 'ភ្នំពេញ' ? 1.5 : 2.5;
   const subTotal = product ? product.price * orderForm.qty : 0;
   const finalTotal = subTotal + deliveryFee;
 
   const handleOrderSubmit = async (e) => {
     e.preventDefault();
-    
     if (orderForm.paymentMethod === 'ABA / វីង' && !payslip) {
       alert("សូមមេត្តាអាប់ឡូតរូបភាពវិក្កយបត្របង់ប្រាក់របស់អ្នក!");
       return;
     }
 
     setIsSubmitting(true);
-
     const formData = new FormData();
     formData.append('productId', product.id);
     formData.append('productName', product.name);
@@ -124,12 +109,7 @@ const ProductDetail = () => {
     const message = `🌟 **ការកុម្ម៉ង់ថ្មី** 🌟\n👤 ឈ្មោះ: ${orderForm.name}\n📞 ទូរស័ព្ទ: ${orderForm.phone}\n📍 តំបន់: ${orderForm.location}\n🚚 អាសយដ្ឋាន: ${orderForm.address}\n📦 ទំនិញ: ${product.name} (x${orderForm.qty})\n💳 បង់តាម: ${orderForm.paymentMethod}\n💰 **សរុបរួម: $${finalTotal}**`;
 
     try {
-      // កែតម្រូវទៅកាន់ API_URL របស់ Render
-      const res = await fetch(`${API_URL}/api/orders`, {
-        method: 'POST',
-        body: formData 
-      });
-
+      const res = await fetch(`${API_URL}/api/orders`, { method: 'POST', body: formData });
       await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -140,11 +120,8 @@ const ProductDetail = () => {
         const teleFormData = new FormData();
         teleFormData.append('chat_id', chatId);
         teleFormData.append('photo', payslip);
-        teleFormData.append('caption', `🧾 វិក្កយបត្រពីអតិថិជន៖ ${orderForm.name}`);
-        await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
-          method: 'POST',
-          body: teleFormData
-        });
+        teleFormData.append('caption', `🧾 វិក្កយបត្រពី៖ ${orderForm.name}`);
+        await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, { method: 'POST', body: teleFormData });
       }
       
       if (res.ok) {
@@ -153,7 +130,7 @@ const ProductDetail = () => {
         navigate('/');
       }
     } catch (err) {
-      alert("មានបញ្ហាភ្ជាប់ទៅកាន់ Server: " + err.message);
+      alert("Error: " + err.message);
     } finally {
       setIsSubmitting(false);
     }
@@ -162,177 +139,174 @@ const ProductDetail = () => {
   if (loading) return (
     <div className="h-screen flex flex-col items-center justify-center bg-white">
       <Loader2 className="text-blue-600 animate-spin mb-4" size={48} />
-      <p className="text-slate-500 font-bold uppercase tracking-widest">Loading Details...</p>
+      <p className="text-slate-500 font-black uppercase tracking-widest text-xs">Loading Details...</p>
     </div>
   );
 
-  if (!product) return <div className="text-center py-20 font-bold">រកមិនឃើញផលិតផល!</div>;
-
   return (
-    <div className="bg-[#F8FAFC] min-h-screen pb-20 font-sans">
-      <header className="bg-white border-b border-slate-100 sticky top-0 z-40">
-        <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-          <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-slate-600 font-bold hover:text-blue-600 transition">
-            <ChevronLeft size={24} /> ត្រលប់ក្រោយ
-          </button>
-        </div>
-      </header>
+    <div className="bg-[#F8FAFC] min-h-screen font-sans pb-10">
+      {/* Mobile Top Bar */}
+      <div className="lg:hidden sticky top-0 z-50 bg-white/80 backdrop-blur-md px-4 h-14 flex items-center border-b border-slate-100">
+        <button onClick={() => navigate(-1)} className="p-2 -ml-2 text-slate-800"><ChevronLeft size={28} /></button>
+        <span className="ml-2 font-black text-slate-800 uppercase italic truncate">{product.name}</span>
+      </div>
 
-      <main className="container mx-auto px-4 py-10 max-w-6xl">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
-          <div className="space-y-4 sticky top-24">
-            <div className="relative group bg-white p-4 rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-white overflow-hidden">
+      <main className="container mx-auto lg:px-4 lg:py-10 max-w-6xl">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-0 lg:gap-12 items-start">
+          
+          {/* Image Gallery */}
+          <div className="space-y-4 lg:sticky lg:top-24">
+            <div className="relative bg-white lg:rounded-[2.5rem] shadow-xl border-b lg:border border-white overflow-hidden aspect-square md:aspect-auto">
               <img 
                 src={getImageUrl(productImages[activeImg])} 
-                alt={product.name} 
-                className="w-full h-[400px] md:h-[500px] rounded-[2rem] object-cover transition-all duration-700 ease-in-out" 
-                onError={(e) => { e.target.src = 'https://placehold.co/600x400?text=Image+Not+Found'; }}
+                className="w-full h-full lg:h-[500px] object-cover" 
+                alt=""
               />
               {productImages.length > 1 && (
-                <>
-                  <button onClick={prevSlide} className="absolute left-6 top-1/2 -translate-y-1/2 bg-white/80 backdrop-blur-md p-3 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-all"><ChevronLeft size={20} /></button>
-                  <button onClick={nextSlide} className="absolute right-6 top-1/2 -translate-y-1/2 bg-white/80 backdrop-blur-md p-3 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-all"><ChevronRight size={20} /></button>
-                </>
+                <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-2">
+                  {productImages.map((_, i) => (
+                    <div key={i} className={`h-1.5 rounded-full transition-all ${activeImg === i ? 'w-8 bg-blue-600' : 'w-2 bg-white/50'}`} />
+                  ))}
+                </div>
               )}
             </div>
-            <div className="flex gap-4 overflow-x-auto pb-2 px-2 scrollbar-hide">
+            <div className="flex gap-3 overflow-x-auto pb-4 px-4 lg:px-0 scrollbar-hide">
               {productImages.map((img, index) => (
-                <button key={index} onClick={() => setActiveImg(index)} className={`relative flex-shrink-0 w-20 h-20 rounded-2xl overflow-hidden border-4 transition-all ${activeImg === index ? 'border-blue-600 scale-105' : 'border-white shadow-sm'}`}>
+                <button key={index} onClick={() => setActiveImg(index)} className={`relative flex-shrink-0 w-16 h-16 rounded-2xl overflow-hidden border-2 transition-all ${activeImg === index ? 'border-blue-600 scale-105' : 'border-white shadow-sm'}`}>
                   <img src={getImageUrl(img)} className="w-full h-full object-cover" alt="" />
                 </button>
               ))}
             </div>
           </div>
 
-          <div className="space-y-8">
+          {/* Product Info */}
+          <div className="px-6 py-6 lg:p-0 space-y-6">
             <div>
-              <span className="bg-blue-100 text-blue-600 px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-wider">{product.category}</span>
-              <h1 className="text-4xl font-black text-slate-800 mt-4 leading-tight">{product.name}</h1>
-              <div className="text-3xl font-black text-blue-600 mt-4">${product.price}</div>
-              <div className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-slate-100 rounded-xl">
-                 <div className={`w-2 h-2 rounded-full ${product.stock > 0 ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
-                 <span className="text-sm font-bold text-slate-600">{product.stock > 0 ? `មានក្នុងស្តុក៖ ${product.stock}` : "អស់ស្តុកហើយ"}</span>
+              <span className="bg-blue-600 text-white px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-tighter">New Arrival</span>
+              <h1 className="text-3xl lg:text-4xl font-black text-slate-800 mt-3 leading-tight uppercase italic">{product.name}</h1>
+              <div className="flex items-baseline gap-2 mt-2">
+                <span className="text-3xl font-black text-blue-600">${product.price}</span>
+                <span className="text-slate-400 font-bold line-through text-sm">${(product.price * 1.2).toFixed(2)}</span>
               </div>
             </div>
-            <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100 italic font-medium text-slate-600 leading-relaxed whitespace-pre-line">{product.detail || "មិនមានព័ត៌មានលម្អិត។"}</div>
-            <button onClick={() => setShowOrderModal(true)} disabled={product.stock <= 0} className={`w-full h-16 rounded-2xl font-black text-lg flex items-center justify-center gap-3 transition-all active:scale-95 ${product.stock > 0 ? 'bg-blue-600 text-white shadow-xl hover:bg-blue-700' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}><ShoppingCart size={24} /> {product.stock > 0 ? 'កុម្ម៉ង់ឥឡូវនេះ' : 'ទំនិញអស់ស្តុក'}</button>
+
+            <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-50">
+              <h3 className="text-xs font-black text-slate-400 uppercase mb-3 tracking-widest">Product Details</h3>
+              <p className="text-slate-600 leading-relaxed text-sm whitespace-pre-line font-medium">{product.detail || "No details available."}</p>
+            </div>
+
+            {/* Floating Mobile Button Container */}
+            <div className="fixed lg:relative bottom-0 left-0 right-0 p-4 lg:p-0 bg-white lg:bg-transparent border-t lg:border-0 z-40">
+                <button 
+                onClick={() => setShowOrderModal(true)} 
+                disabled={product.stock <= 0} 
+                className={`w-full h-14 lg:h-16 rounded-2xl font-black text-lg flex items-center justify-center gap-3 transition-all active:scale-95 ${product.stock > 0 ? 'bg-blue-600 text-white shadow-xl' : 'bg-slate-200 text-slate-400'}`}
+                >
+                <ShoppingCart size={22} /> {product.stock > 0 ? 'កុម្ម៉ង់ឥឡូវនេះ' : 'ទំនិញអស់ស្តុក'}
+                </button>
+            </div>
           </div>
         </div>
       </main>
 
+      {/* Order Modal */}
       {showOrderModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl relative overflow-hidden max-h-[90vh] overflow-y-auto">
-            <button onClick={() => {setShowOrderModal(false); setPreviewUrl(null); setPayslip(null);}} className="absolute top-6 right-6 text-slate-400 hover:text-red-500 z-10"><X size={28} /></button>
-            
-            <form onSubmit={handleOrderSubmit} className="p-8 space-y-5">
-              <div className="flex items-center gap-4 mb-2">
-                <div className="p-3 bg-blue-600 rounded-2xl text-white shadow-lg"><PackagePlus size={24}/></div>
-                <h3 className="text-2xl font-black text-slate-800 italic uppercase">Checkout</h3>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-end lg:items-center justify-center">
+          <div className="bg-white w-full max-w-lg rounded-t-[2.5rem] lg:rounded-[2.5rem] shadow-2xl relative overflow-hidden h-[90vh] lg:h-auto lg:max-h-[90vh] overflow-y-auto animate-in slide-in-from-bottom duration-300">
+            <div className="sticky top-0 bg-white/90 backdrop-blur-md px-8 py-6 border-b border-slate-50 flex justify-between items-center z-20">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-600 rounded-xl text-white"><PackagePlus size={20}/></div>
+                <h3 className="text-xl font-black text-slate-800 uppercase italic">Checkout</h3>
               </div>
-              
+              <button onClick={() => setShowOrderModal(false)} className="p-2 bg-slate-100 rounded-full text-slate-400"><X size={20} /></button>
+            </div>
+            
+            <form onSubmit={handleOrderSubmit} className="p-8 space-y-6">
               <div className="space-y-4">
-                <input required type="text" placeholder="ឈ្មោះអ្នកទទួល" className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold" value={orderForm.name} onChange={e => setOrderForm({...orderForm, name: e.target.value})} />
-                <input required type="text" placeholder="លេខទូរស័ព្ទ" className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold" value={orderForm.phone} onChange={e => setOrderForm({...orderForm, phone: e.target.value})} />
-                <textarea required placeholder="អាសយដ្ឋានដឹកជញ្ជូន" className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold h-20" value={orderForm.address} onChange={e => setOrderForm({...orderForm, address: e.target.value})}></textarea>
+                <div className="relative">
+                    <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                    <input required type="text" placeholder="ឈ្មោះអ្នកទទួល" className="w-full pl-12 pr-4 py-4 bg-slate-50 rounded-2xl outline-none font-bold text-sm focus:ring-2 focus:ring-blue-500 transition-all" value={orderForm.name} onChange={e => setOrderForm({...orderForm, name: e.target.value})} />
+                </div>
+                <div className="relative">
+                    <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                    <input required type="text" placeholder="លេខទូរស័ព្ទ" className="w-full pl-12 pr-4 py-4 bg-slate-50 rounded-2xl outline-none font-bold text-sm focus:ring-2 focus:ring-blue-500 transition-all" value={orderForm.phone} onChange={e => setOrderForm({...orderForm, phone: e.target.value})} />
+                </div>
+                <div className="relative">
+                    <MapPin className="absolute left-4 top-4 text-slate-400" size={18} />
+                    <textarea required placeholder="អាសយដ្ឋានលម្អិត (ផ្ទះលេខ/ផ្លូវ...)" className="w-full pl-12 pr-4 py-4 bg-slate-50 rounded-2xl outline-none font-bold text-sm h-24 focus:ring-2 focus:ring-blue-500 transition-all" value={orderForm.address} onChange={e => setOrderForm({...orderForm, address: e.target.value})}></textarea>
+                </div>
                 
-                <h2 className="text-x font-black text-slate-800 uppercase tracking-widest">ការបង់ប្រាក់</h2>
-                <div className="grid grid-cols-2 gap-3">
-                  {['ភ្នំពេញ', 'តាមខេត្ត'].map(loc => (
-                    <button key={loc} type="button" onClick={() => setOrderForm({...orderForm, location: loc})} className={`p-3 rounded-xl border-2 font-bold transition-all ${orderForm.location === loc ? 'border-blue-600 bg-blue-50 text-blue-600' : 'border-slate-100 text-slate-400'}`}>
-                      {loc} (${loc === 'ភ្នំពេញ' ? '1.5' : '2.5'})
-                    </button>
-                  ))}
+                <div className="space-y-3">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-2">តំបន់ និងសេវាដឹក</p>
+                    <div className="grid grid-cols-2 gap-3">
+                        {['ភ្នំពេញ', 'តាមខេត្ត'].map(loc => (
+                        <button key={loc} type="button" onClick={() => setOrderForm({...orderForm, location: loc})} className={`flex items-center justify-center gap-2 p-4 rounded-2xl border-2 font-black text-xs transition-all ${orderForm.location === loc ? 'border-blue-600 bg-blue-50 text-blue-600 shadow-lg shadow-blue-100' : 'border-slate-100 text-slate-400'}`}>
+                            <Truck size={16} /> {loc}
+                        </button>
+                        ))}
+                    </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <button type="button" disabled={orderForm.location === 'តាមខេត្ត'} onClick={() => setOrderForm({...orderForm, paymentMethod: 'បង់ប្រាក់ផ្ទាល់ (COD)'})} className={`p-3 rounded-xl border-2 font-bold transition-all ${orderForm.paymentMethod === 'បង់ប្រាក់ផ្ទាល់ (COD)' ? 'border-blue-600 bg-blue-50 text-blue-600' : 'border-slate-100 text-slate-400 disabled:opacity-30'}`}>
-                    បង់ពេលអីវ៉ាន់ដល់
-                  </button>
-                  <button type="button" onClick={() => setOrderForm({...orderForm, paymentMethod: 'ABA / វីង'})} className={`p-3 rounded-xl border-2 font-bold transition-all ${orderForm.paymentMethod === 'ABA / វីង' ? 'border-blue-600 bg-blue-50 text-blue-600' : 'border-slate-100 text-slate-400'}`}>
-                    ABA / វីង
-                  </button>
+                <div className="space-y-3">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-2">វិធីសាស្ត្របង់ប្រាក់</p>
+                    <div className="grid grid-cols-2 gap-3">
+                        <button type="button" disabled={orderForm.location === 'តាមខេត្ត'} onClick={() => setOrderForm({...orderForm, paymentMethod: 'បង់ប្រាក់ផ្ទាល់ (COD)'})} className={`p-4 rounded-2xl border-2 font-black text-[10px] transition-all ${orderForm.paymentMethod === 'បង់ប្រាក់ផ្ទាល់ (COD)' ? 'border-blue-600 bg-blue-50 text-blue-600' : 'border-slate-100 text-slate-400 disabled:opacity-30'}`}>
+                            បង់ពេលអីវ៉ាន់ដល់
+                        </button>
+                        <button type="button" onClick={() => setOrderForm({...orderForm, paymentMethod: 'ABA / វីង'})} className={`p-4 rounded-2xl border-2 font-black text-[10px] transition-all ${orderForm.paymentMethod === 'ABA / វីង' ? 'border-blue-600 bg-blue-50 text-blue-600 shadow-lg shadow-blue-100' : 'border-slate-100 text-slate-400'}`}>
+                            ABA / វីង
+                        </button>
+                    </div>
                 </div>
 
                 {orderForm.paymentMethod === 'ABA / វីង' && (
-                  <div className="space-y-4">
-                    <div className="flex flex-col items-center bg-white p-6 rounded-[2.5rem] border-2 border-blue-600 shadow-xl shadow-blue-100 animate-in fade-in zoom-in duration-300">
-                      <div className="flex items-center gap-2 mb-4">
-                        <div className="p-1.5 bg-blue-600 rounded-lg shadow-sm">
-                          <CreditCard size={18} className="text-white" />
-                        </div>
-                        <p className="text-sm font-black text-slate-800 uppercase italic tracking-tighter text-center">Scan to Pay Now<br/>ស្កេនដើម្បីបង់ប្រាក់</p>
+                  <div className="animate-in fade-in zoom-in duration-500 space-y-4">
+                    <div className="bg-blue-600 p-6 rounded-[2.5rem] text-white text-center shadow-xl">
+                      <p className="text-[10px] font-bold opacity-80 uppercase tracking-widest mb-4">Scan QR to pay</p>
+                      <div className="bg-white p-3 rounded-3xl inline-block shadow-inner mb-4">
+                        <img src={`${API_URL}/uploads/QR/KB_QR.PNG`} className="w-40 h-40 object-contain" alt="QR" onError={(e) => { e.target.src = "https://placehold.co/200x200?text=QR+Not+Found"; }} />
                       </div>
-                      
-                      <div className="relative p-3 bg-white border-2 border-slate-50 rounded-[2rem] shadow-inner">
-                        <img 
-                          src={`${API_URL}/uploads/QR/KB_QR.PNG`} 
-                          alt="ABA QR" 
-                          className="w-48 h-48 rounded-xl object-contain" 
-                          onError={(e) => { e.target.src = "https://placehold.co/200x200?text=QR+Not+Found"; }}
-                        />
-                      </div>
-
-                      <div className="mt-5 text-center w-full space-y-3">
-                        <div>
-                          <p className="text-[13px] font-black text-slate-400 uppercase">ឈ្មោះគណនី</p>
-                          <p className="text-[18px] font-black text-blue-900 uppercase">24 STORE</p>
-                        </div>
-                        <div className="py-2 px-6 bg-slate-900 text-white rounded-xl text-center">
-                          <p className="text-[10px] opacity-60 uppercase font-bold">ទឹកប្រាក់ត្រូវបង់</p>
-                          <p className="text-xl font-black text-blue-400">${finalTotal.toLocaleString()}</p>
-                        </div>
-                      </div>
+                      <p className="font-black text-lg">24 STORE</p>
+                      <p className="text-xs font-bold opacity-70">Pay: ${finalTotal.toFixed(2)}</p>
                     </div>
 
-                    <div className="bg-blue-50 p-4 rounded-2xl border-2 border-dashed border-blue-200">
-                      <p className="text-[10px] font-black text-blue-600 uppercase mb-3 text-center">សូមបញ្ជាក់ការបង់ប្រាក់ (Upload Payslip)</p>
-                      <label className="flex flex-col items-center justify-center cursor-pointer">
-                        {previewUrl ? (
-                          <div className="relative w-full h-32">
-                            <img src={previewUrl} className="w-full h-full object-cover rounded-xl border border-white" alt="Preview" />
-                            <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity rounded-xl">
-                               <span className="text-white text-xs font-bold">ចុចដើម្បីប្តូររូប</span>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="py-4 flex flex-col items-center text-slate-400">
-                            <ImageIcon size={32} />
-                            <span className="text-[10px] font-bold mt-1">ចុចទីនេះដើម្បីដាក់រូបវិក្កយបត្រ</span>
-                          </div>
-                        )}
+                    <label className="block p-4 bg-blue-50 rounded-2xl border-2 border-dashed border-blue-200 cursor-pointer text-center">
                         <input type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
-                      </label>
-                    </div>
+                        {previewUrl ? (
+                            <img src={previewUrl} className="w-full h-32 object-cover rounded-xl" alt="Slip" />
+                        ) : (
+                            <div className="flex flex-col items-center gap-1 text-blue-500">
+                                <ImageIcon size={24} />
+                                <span className="text-[10px] font-black uppercase">Upload Payslip</span>
+                            </div>
+                        )}
+                    </label>
                   </div>
                 )}
+              </div>
 
-                <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl font-bold text-sm">
-                  <span className="text-slate-500 uppercase">ចំនួន: {orderForm.qty}</span>
-                  <div className="flex gap-4">
-                    <button type="button" onClick={() => setOrderForm({...orderForm, qty: Math.max(1, orderForm.qty - 1)})} className="text-blue-600 text-xl font-black">-</button>
-                    <button type="button" onClick={() => setOrderForm({...orderForm, qty: Math.min(product.stock, orderForm.qty + 1)})} className="text-blue-600 text-xl font-black">+</button>
-                  </div>
+              {/* Pricing Summary */}
+              <div className="bg-slate-900 p-6 rounded-[2rem] text-white space-y-3 shadow-2xl">
+                <div className="flex justify-between items-center text-xs font-bold opacity-60">
+                    <span>ចំនួនកុម្ម៉ង់</span>
+                    <div className="flex items-center gap-4 bg-white/10 px-3 py-1 rounded-full">
+                        <button type="button" onClick={() => setOrderForm({...orderForm, qty: Math.max(1, orderForm.qty - 1)})} className="text-lg">-</button>
+                        <span className="text-sm font-black text-blue-400">{orderForm.qty}</span>
+                        <button type="button" onClick={() => setOrderForm({...orderForm, qty: Math.min(product.stock, orderForm.qty + 1)})} className="text-lg">+</button>
+                    </div>
                 </div>
-
-                <div className="space-y-2 pt-2 border-t border-dashed">
-                    <div className="flex justify-between items-center text-sm font-bold">
-                        <span className="text-slate-400 uppercase">ទំនិញ</span>
-                        <span className="text-slate-800">${subTotal.toLocaleString()}</span>
-                    </div>
-                    <div className="flex justify-between items-center text-sm font-bold">
-                        <span className="text-slate-400 uppercase">សេវាដឹក</span>
-                        <span className="text-slate-800">${deliveryFee.toLocaleString()}</span>
-                    </div>
-                    <div className="flex justify-between items-center pt-2 border-t">
-                        <span className="font-black text-slate-800 uppercase text-xs">សរុបរួម:</span>
-                        <span className="text-2xl font-black text-blue-600">${finalTotal.toLocaleString()}</span>
-                    </div>
+                <div className="flex justify-between items-center text-xs font-bold">
+                    <span className="opacity-60">សេវាដឹកជញ្ជូន</span>
+                    <span>${deliveryFee.toFixed(2)}</span>
+                </div>
+                <div className="pt-3 border-t border-white/10 flex justify-between items-center">
+                    <span className="font-black text-sm italic uppercase">សរុបរួម:</span>
+                    <span className="text-2xl font-black text-blue-400">${finalTotal.toFixed(2)}</span>
                 </div>
               </div>
 
-              <button disabled={isSubmitting} className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black text-lg hover:bg-black transition-all shadow-xl disabled:bg-slate-300">
-                {isSubmitting ? "កំពុងបញ្ជូន..." : "បញ្ជាក់ការកុម្ម៉ង់"}
+              <button disabled={isSubmitting} className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black text-lg shadow-xl shadow-blue-100 disabled:bg-slate-300">
+                {isSubmitting ? "Processing..." : "Confirm My Order"}
               </button>
             </form>
           </div>

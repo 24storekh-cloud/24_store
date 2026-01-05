@@ -32,14 +32,16 @@ const AdminDashboard = () => {
   const [previews, setPreviews] = useState([]);
   const [selectedImg, setSelectedImg] = useState(null);
 
-  // --- ១. កែប្រែការទាញ URL រូបភាពពី Backend Uploads ---
+  // --- ១. អនុគមន៍ជំនួយសម្រាប់សម្អាត URL រូបភាព ---
   const getCleanUrl = (img) => {
     if (!img) return 'https://placehold.co/600x400?text=No+Image';
-    if (typeof img === 'string' && img.startsWith('data:')) return img; // សម្រាប់ Base64 ចាស់
-    if (typeof img === 'string' && img.startsWith('http')) return img; // សម្រាប់ URL ពេញ
-    return `${API_URL}/uploads/${img}`; // សម្រាប់ឈ្មោះ File ថ្មី
+    // ប្រសិនបើជា Base64 ឬ URL ពេញស្រាប់
+    if (typeof img === 'string' && (img.startsWith('data:') || img.startsWith('http'))) return img; 
+    // បើជាឈ្មោះ file ធម្មតា ត្រូវភ្ជាប់ជាមួយ /uploads/
+    return `${API_URL}/uploads/${img}`; 
   };
 
+  // --- ២. ទាញទិន្នន័យពី API ---
   const fetchData = async () => {
     try {
       const res = await fetch(`${API_URL}/api/data`);
@@ -53,11 +55,11 @@ const AdminDashboard = () => {
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 15000); 
+    const interval = setInterval(fetchData, 15000); // ទាញរាល់ ១៥ វិនាទី
     return () => clearInterval(interval);
   }, []);
 
-  // --- Filter Logic ---
+  // --- ៣. ការចម្រោះទិន្នន័យ (Filter Logic) ---
   const filteredProducts = useMemo(() => {
     return data.products.filter(product => {
       const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase());
@@ -76,7 +78,7 @@ const AdminDashboard = () => {
     });
   }, [data.orders, orderSearch, statusFilter]);
 
-  // --- ២. កែសម្រួល Product Submit (ផ្ញើជា FormData) ---
+  // --- ៤. ការបញ្ជូនទិន្នន័យ Product (FormData) ---
   const handleProductSubmit = async (e) => {
     e.preventDefault();
     const url = isEditMode 
@@ -92,7 +94,7 @@ const AdminDashboard = () => {
     form.append('detail', formData.detail);
     form.append('stock', formData.stock);
 
-    // បន្ថែមរូបភាពទៅក្នុង FormData
+    // បន្ថែមរូបភាពទៅក្នុង FormData (ប្រើ key 'images')
     files.forEach(file => {
       form.append('images', file);
     });
@@ -100,7 +102,7 @@ const AdminDashboard = () => {
     try {
       const res = await fetch(url, { 
         method: isEditMode ? 'PUT' : 'POST', 
-        body: form // មិនបាច់ដាក់ Header Content-Type ទេ Browser នឹងដាក់ឱ្យអូតូ
+        body: form 
       });
       
       if (res.ok) {
@@ -118,12 +120,12 @@ const AdminDashboard = () => {
     }
   };
 
-  // --- ៣. កែសម្រួល Banner Upload (ផ្ញើជា FormData មកពី BannerSection) ---
+  // --- ៥. ការបញ្ជូនទិន្នន័យ Banner (FormData) ---
   const handleBannerUpload = async (formData) => {
     try {
       const res = await fetch(`${API_URL}/api/upload`, {
         method: 'POST',
-        body: formData // ទទួលយក FormData ពី BannerSection.jsx ផ្ទាល់
+        body: formData 
       });
       if (res.ok) {
         toast.success("បង្ហោះ Banner រួចរាល់!");
@@ -132,7 +134,7 @@ const AdminDashboard = () => {
         throw new Error("Server error");
       }
     } catch (err) { 
-      toast.error("មិនអាចបង្ហោះ Banner បានទេ! (Error 500)"); 
+      toast.error("មិនអាចបង្ហោះ Banner បានទេ!"); 
     }
   };
 
@@ -283,7 +285,7 @@ const AdminDashboard = () => {
         previews={previews}
       />
 
-      {/* Lightbox for Payslip */}
+      {/* Lightbox for Viewing Payslip */}
       {selectedImg && (
         <div className="fixed inset-0 bg-slate-900/90 z-[999] flex items-center justify-center p-6 backdrop-blur-md" onClick={() => setSelectedImg(null)}>
           <div className="relative max-w-2xl w-full flex flex-col items-center animate-in zoom-in-95">
