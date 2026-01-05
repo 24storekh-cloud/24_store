@@ -9,23 +9,25 @@ const app = express();
 
 // 1. មូលដ្ឋានគ្រឹះ និងសុវត្ថិភាព (Configuration)
 app.use(cors());
-app.use(express.json({ limit: '50mb' })); // ដោះស្រាយ Error 431
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
-app.use('/uploads', express.static('uploads'));
+app.use(express.json()); 
+app.use(express.urlencoded({ extended: true }));
+
+// បើកឱ្យគេចូលមើលរូបភាពតាម URL (ឧទាហរណ៍: http://localhost:5000/uploads/filename.jpg)
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 const DATA_FILE = 'data.json';
 const ORDERS_FILE = 'orders.json';
 
-// --- បង្កើត File JSON បើមិនទាន់មាន ដើម្បីការពារ Error ពេល Start ---
+// --- បង្កើត File JSON និង Folder បើមិនទាន់មាន ---
 const initFiles = () => {
+    if (!fs.existsSync('uploads')) {
+        fs.mkdirSync('uploads');
+    }
     if (!fs.existsSync(DATA_FILE)) {
         fs.writeFileSync(DATA_FILE, JSON.stringify({ products: [], banners: [] }, null, 2));
     }
     if (!fs.existsSync(ORDERS_FILE)) {
         fs.writeFileSync(ORDERS_FILE, JSON.stringify([], null, 2));
-    }
-    if (!fs.existsSync('uploads')) {
-        fs.mkdirSync('uploads');
     }
 };
 initFiles();
@@ -50,17 +52,14 @@ const safeWriteJSON = (filePath, data) => {
     }
 };
 
-const fileToBase64 = (filePath) => {
-    const bitmap = fs.readFileSync(filePath);
-    const extension = path.extname(filePath).replace('.', '');
-    const base64Content = bitmap.toString('base64');
-    return `data:image/${extension};base64,${base64Content}`;
-};
-
-// 2. ការកំណត់ Multer សម្រាប់ Upload បណ្តោះអាសន្ន
+// 2. ការកំណត់ Multer សម្រាប់រក្សាទុក File រូបភាពពិតប្រាកដ
 const storage = multer.diskStorage({
     destination: (req, file, cb) => cb(null, 'uploads/'),
-    filename: (req, file, cb) => cb(null, Date.now() + '-' + file.originalname)
+    filename: (req, file, cb) => {
+        // បង្កើតឈ្មោះថ្មីការពារជាន់គ្នា: timestamp-random.extension
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        cb(null, uniqueSuffix + path.extname(file.originalname));
+    }
 });
 const upload = multer({ storage });
 
@@ -98,11 +97,8 @@ app.post('/api/upload', upload.array('images', 5), (req, res) => {
     const { type, name, price, cost, category, detail, title, stock } = req.body;
     let data = safeReadJSON(DATA_FILE, { products: [], banners: [] });
 
-    const base64Images = req.files ? req.files.map(f => {
-        const b64 = fileToBase64(f.path);
-        fs.unlinkSync(f.path); // លុប File ចេញភ្លាមដើម្បីសន្សំទំហំ Disk
-        return b64;
-    }) : [];
+    // រក្សាទុកតែឈ្មោះ File ក្នុង Array (ឧទាហរណ៍: ["17123456-123.jpg"])
+    const savedFilenames = req.files ? req.files.map(f => f.filename) : [];
 
     if (type === 'product') {
         data.products.push({
@@ -113,13 +109,13 @@ app.post('/api/upload', upload.array('images', 5), (req, res) => {
             category, 
             detail,
             stock: parseInt(stock) || 0,
-            images: base64Images
+            images: savedFilenames // រក្សាទុកឈ្មោះ File
         });
     } else {
         data.banners.push({ 
             id: Date.now(), 
             title, 
-            image: base64Images[0] || '' 
+            image: savedFilenames[0] || '' // រក្សាទុកឈ្មោះ File តែមួយ
         });
     }
     
@@ -138,12 +134,10 @@ app.put('/api/update/:type/:id', upload.array('images', 5), (req, res) => {
             data.products[index].stock = parseInt(req.body.stock);
         } else {
             let finalImages;
+            // បើមាន Upload រូបភាពថ្មី
             if (req.files && req.files.length > 0) {
-                finalImages = req.files.map(f => {
-                    const b64 = fileToBase64(f.path);
-                    fs.unlinkSync(f.path);
-                    return b64;
-                });
+                finalImages = req.files.map(f => f.filename);
+                // (ជម្រើសបន្ថែម: បងអាចលុបរូបភាពចាស់ពី Folder uploads នៅទីនេះបាន)
             } else {
                 finalImages = type === 'product' ? data.products[index].images : [data.banners[index].image];
             }
@@ -178,6 +172,17 @@ app.delete('/api/delete/:type/:id', (req, res) => {
     const { type, id } = req.params;
     let data = safeReadJSON(DATA_FILE, { products: [], banners: [] });
     const key = type === 'product' ? 'products' : 'banners';
+    
+    // លុប File រូបភាពចេញពី Folder ដើម្បីសន្សំទំហំ Disk (ជម្រើសល្អបំផុត)
+    const itemToDelete = data[key].find(i => i.id.toString() === id);
+    if (itemToDelete) {
+        const imgs = type === 'product' ? itemToDelete.images : [itemToDelete.image];
+        imgs.forEach(imgName => {
+            const fullPath = path.join(__dirname, 'uploads', imgName);
+            if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
+        });
+    }
+
     data[key] = data[key].filter(i => i.id.toString() !== id);
     safeWriteJSON(DATA_FILE, data);
     res.json({ success: true });
@@ -187,12 +192,7 @@ app.delete('/api/delete/:type/:id', (req, res) => {
 app.post('/api/orders', upload.single('payslip'), (req, res) => {
     try {
         const orderData = req.body;
-        let payslipBase64 = null;
-
-        if (req.file) {
-            payslipBase64 = fileToBase64(req.file.path);
-            fs.unlinkSync(req.file.path);
-        }
+        const payslipFilename = req.file ? req.file.filename : null;
         
         const today = new Date().toISOString().split('T')[0];
         let orders = safeReadJSON(ORDERS_FILE, []);
@@ -206,7 +206,7 @@ app.post('/api/orders', upload.single('payslip'), (req, res) => {
             productName: orderData.productName,
             quantity: parseInt(orderData.qty || orderData.quantity) || 1,
             total: parseFloat(orderData.total) || 0,
-            payslip: payslipBase64,
+            payslip: payslipFilename, // រក្សាទុកឈ្មោះ File
             status: 'Pending',
             date: today
         };
@@ -233,7 +233,6 @@ app.post('/api/orders', upload.single('payslip'), (req, res) => {
     }
 });
 
-// រាល់ពេលកែ Status វានឹងកែក្នុង JSON ភ្លាម
 app.patch('/api/orders/:id/status', (req, res) => {
     let orders = safeReadJSON(ORDERS_FILE, []);
     const index = orders.findIndex(o => o.orderId.toString() === req.params.id);
@@ -248,6 +247,13 @@ app.patch('/api/orders/:id/status', (req, res) => {
 
 app.delete('/api/orders/:id', (req, res) => {
     let orders = safeReadJSON(ORDERS_FILE, []);
+    const orderToDelete = orders.find(o => o.orderId.toString() === req.params.id);
+    
+    if (orderToDelete && orderToDelete.payslip) {
+        const fullPath = path.join(__dirname, 'uploads', orderToDelete.payslip);
+        if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
+    }
+
     const filtered = orders.filter(o => o.orderId.toString() !== req.params.id);
     safeWriteJSON(ORDERS_FILE, filtered);
     res.json({ success: true });
