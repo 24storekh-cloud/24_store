@@ -39,16 +39,17 @@ const AdminDashboard = () => {
   const getCleanUrl = useCallback((img) => {
     if (!img) return 'https://placehold.co/600x400?text=No+Image';
     
-    // បើសិនជា URL ស្រាប់ (Blob ឬ Data)
     if (typeof img === 'string' && (img.startsWith('data:') || img.startsWith('blob:'))) return img;
     
-    // បើសិនជាមាន http រួចហើយ ត្រូវប្តូរវាទៅជា HTTPS ប្រសិនបើ Website ដើរលើ HTTPS
     if (typeof img === 'string' && img.startsWith('http')) {
-      return img.replace('http://', 'https://');
+      // បើនៅលើ Server (Vercel) ទើបប្តូរទៅ HTTPS ដើម្បីដោះស្រាយ Mixed Content Error
+      if (!window.location.hostname.includes('localhost')) {
+        return img.replace('http://', 'https://');
+      }
+      return img;
     }
 
     const baseUrl = API_URL.endsWith('/') ? API_URL.slice(0, -1) : API_URL;
-    // សម្អាត path ប្រសិនបើវាមានពាក្យ uploads/ ស្រាប់
     const cleanPath = img.replace('uploads/', '');
     return `${baseUrl}/uploads/${cleanPath}`; 
   }, []);
@@ -184,16 +185,32 @@ const AdminDashboard = () => {
   };
 
   // --- ៦. ការលុបទិន្នន័យ ---
+  // --- ៦. ការលុបទិន្នន័យ (កែសម្រួលឱ្យកាន់តែរឹងមាំ) ---
   const handleDelete = async (type, id) => {
-    if (window.confirm(`តើអ្នកពិតជាចង់លុប ${type} នេះមែនទេ?`)) {
-      try {
-        const endpoint = type === 'order' ? `/api/orders/${id}` : `/api/delete/${type}/${id}`;
-        const res = await fetch(`${API_URL}${endpoint}`, { method: 'DELETE' });
-        if(res.ok) {
-            fetchData(true);
-            toast.success("លុបបានជោគជ័យ!");
-        }
-      } catch (err) { toast.error("មិនអាចលុបបានទេ!"); }
+    if (!id) return toast.error("រកមិនឃើញ ID សម្រាប់លុបទេ!");
+
+    // បន្ថែមការសួរបញ្ជាក់ (Confirm Dialog)
+    const isConfirmed = window.confirm(`តើអ្នកពិតជាចង់លុប ${type} នេះមែនទេ?`);
+    if (!isConfirmed) return;
+
+    const loadingToast = toast.loading("កំពុងលុប...");
+
+    try {
+      const res = await fetch(`${API_URL}/api/delete/${type}/${id}`, {
+        method: 'DELETE'
+      });
+      
+      if (res.ok) {
+          toast.success("លុបបានជោគជ័យ", { id: loadingToast });
+          // ហៅ fetchData(true) ដើម្បី Update UI ដោយមិនចាំបាច់ Loading ធំកណ្តាលអេក្រង់
+          fetchData(true); 
+      } else {
+          const errData = await res.json();
+          throw new Error(errData.message || "Delete Failed");
+      }
+    } catch (error) {
+      console.error("Delete Error:", error);
+      toast.error("មានបញ្ហាក្នុងការលុប!", { id: loadingToast });
     }
   };
 

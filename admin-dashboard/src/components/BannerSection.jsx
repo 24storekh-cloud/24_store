@@ -10,7 +10,7 @@ const BannerSection = ({ banners, onDelete, onUpload, getCleanUrl }) => {
   const [preview, setPreview] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
 
-  // ១. មុខងារសម្អាត Memory (Revoke URL)
+  // ១. មុខងារសម្អាត Memory (Revoke URL) ដើម្បីកុំឱ្យទូរស័ព្ទ/កុំព្យូទ័រដើរយឺត
   useEffect(() => {
     return () => {
       if (preview && preview.startsWith('blob:')) {
@@ -19,28 +19,24 @@ const BannerSection = ({ banners, onDelete, onUpload, getCleanUrl }) => {
     };
   }, [preview]);
 
-  // ២. មុខងាររៀបចំ URL រូបភាព (កែសម្រួលថ្មីដើម្បីដោះស្រាយ HTTPS Error)
+  // ២. មុខងាររៀបចំ URL រូបភាព (ដោះស្រាយបញ្ហា HTTPS/Mixed Content)
   const renderBannerImage = useCallback((imgName) => {
     if (!imgName) return 'https://placehold.co/800x400?text=No+Image';
     
-    // បើសិនជា imgName ជា URL ពេញស្រាប់ (http...)
+    // បើសិនជា Link មកពី Database ជាប្រភេទ Full URL (http://...)
     if (typeof imgName === 'string' && imgName.startsWith('http')) {
-      // ប្រសិនបើវេបសាយដើរលើ Vercel (HTTPS) តែ Link ជា HTTP localhost
-      // យើងត្រូវដូរវាទៅតាម API_URL ដែលបានកំណត់ក្នុង config
-      if (imgName.includes('localhost:5000') && !window.location.href.includes('localhost')) {
+      // បើវេបសាយដើរលើ HTTPS (Vercel) តែ Link រូបភាពជា localhost (HTTP)
+      if (imgName.includes('localhost:5000') && !window.location.hostname.includes('localhost')) {
          const pathOnly = imgName.split('/uploads/')[1];
          return `${API_URL}/uploads/${pathOnly}`;
       }
       return imgName;
     }
 
-    // បើមាន getCleanUrl ពី props ឱ្យប្រើវា
-    if (getCleanUrl) return getCleanUrl(imgName);
-
-    // បើមិនមានទេ រៀបចំ URL ដោយខ្លួនឯង
-    const cleanPath = imgName.replace('uploads/', '');
+    // បើមកតែឈ្មោះ File ធម្មតា
+    const cleanPath = typeof imgName === 'string' ? imgName.replace('uploads/', '') : '';
     return `${API_URL}/uploads/${cleanPath}`;
-  }, [getCleanUrl]);
+  }, []);
 
   const handleFileChange = (e) => {
     const selected = e.target.files[0];
@@ -61,6 +57,7 @@ const BannerSection = ({ banners, onDelete, onUpload, getCleanUrl }) => {
     const formData = new FormData();
     formData.append('type', 'banner');
     formData.append('title', title);
+    // បញ្ជាក់៖ ឆែកមើល Backend បើប្រើ upload.single('image') ត្រូវដូរ 'images' ទៅ 'image'
     formData.append('images', file); 
 
     try {
@@ -164,9 +161,20 @@ const BannerSection = ({ banners, onDelete, onUpload, getCleanUrl }) => {
                 </h4>
                 <div className="flex justify-between items-center mt-3 opacity-0 group-hover:opacity-100 transition-all">
                   <p className="text-blue-400 text-[10px] font-black uppercase tracking-widest">Active</p>
-                  <button onClick={() => onDelete('banner', b.id || b._id)} className="p-3 bg-red-500 text-white rounded-xl active:scale-90">
-                    <Trash2 size={18}/>
-                  </button>
+                  <button 
+                      onClick={() => {
+                        // កែសម្រួល៖ ប្រើ b.id ឱ្យត្រូវតាម data.json
+                        const targetId = b.id || b._id;
+                        if (targetId) {
+                          onDelete('banner', targetId);
+                        } else {
+                          toast.error("រកមិនឃើញ ID សម្រាប់លុបទេ!");
+                        }
+                      }} 
+                      className="p-3 bg-red-500 text-white rounded-xl active:scale-90 hover:bg-red-600 transition-colors"
+                    >
+                      <Trash2 size={18}/>
+                    </button>
                 </div>
               </div>
             </div>
