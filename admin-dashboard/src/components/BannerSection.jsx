@@ -57,7 +57,7 @@ const BannerSection = ({ banners, onDelete, onUpload, getCleanUrl }) => {
     const formData = new FormData();
     formData.append('type', 'banner');
     formData.append('title', title);
-    // បញ្ជាក់៖ ឆែកមើល Backend បើប្រើ upload.single('image') ត្រូវដូរ 'images' ទៅ 'image'
+    // បញ្ជាក់៖ ប្រើ 'images' ឱ្យដូចទៅនឹង App.js ដើម្បីឱ្យ Backend ងាយស្រួលចាប់យក
     formData.append('images', file); 
 
     try {
@@ -72,7 +72,7 @@ const BannerSection = ({ banners, onDelete, onUpload, getCleanUrl }) => {
         setFile(null); 
         setPreview(null); 
         setShowUpload(false);
-        if (onUpload) await onUpload(); 
+        if (onUpload) await onUpload(); // មុខងារនេះនឹងទៅហៅ fetchData() ក្នុង App.js
       } else {
         throw new Error("Upload Failed");
       }
@@ -149,7 +149,8 @@ const BannerSection = ({ banners, onDelete, onUpload, getCleanUrl }) => {
             <div key={b.id || b._id} className="group relative bg-white rounded-[2.5rem] overflow-hidden shadow-sm border-4 border-white hover:shadow-2xl transition-all duration-500">
               <div className="aspect-[21/9] overflow-hidden bg-slate-100">
                 <img 
-                  src={renderBannerImage(b.image)} 
+                  // ប្រើ getCleanUrl ដែលបញ្ជូនមកពី App.js វានឹងមានប្រសិទ្ធភាពជាង
+                  src={getCleanUrl(b.image)} 
                   className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" 
                   alt={b.title} 
                   onError={(e) => { e.target.src = 'https://placehold.co/800x400?text=Image+Load+Failed'; }}
@@ -160,21 +161,17 @@ const BannerSection = ({ banners, onDelete, onUpload, getCleanUrl }) => {
                   {b.title}
                 </h4>
                 <div className="flex justify-between items-center mt-3 opacity-0 group-hover:opacity-100 transition-all">
-                  <p className="text-blue-400 text-[10px] font-black uppercase tracking-widest">Active</p>
+                  <p className="text-blue-400 text-[10px] font-black uppercase tracking-widest">Active Banner</p>
                   <button 
-                      onClick={() => {
-                        // កែសម្រួល៖ ប្រើ b.id ឱ្យត្រូវតាម data.json
-                        const targetId = b.id || b._id;
-                        if (targetId) {
-                          onDelete('banner', targetId);
-                        } else {
-                          toast.error("រកមិនឃើញ ID សម្រាប់លុបទេ!");
-                        }
-                      }} 
-                      className="p-3 bg-red-500 text-white rounded-xl active:scale-90 hover:bg-red-600 transition-colors"
-                    >
-                      <Trash2 size={18}/>
-                    </button>
+                    onClick={() => {
+                      // ត្រូវប្រាកដថា onDelete បញ្ជូន 'banner' និង 'id' ទៅកាន់ App.js
+                      const targetId = b.id || b._id;
+                      onDelete('banner', targetId);
+                    }} 
+                    className="p-3 bg-red-500 text-white rounded-xl active:scale-90 hover:bg-red-600 transition-colors shadow-lg"
+                  >
+                    <Trash2 size={18}/>
+                  </button>
                 </div>
               </div>
             </div>
