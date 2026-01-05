@@ -138,25 +138,35 @@ app.put('/api/update/product/:id', upload.any(), (req, res) => {
         res.status(500).json({ success: false, error: error.message });
     }
 });
-
+// ================= 3. delete =================
+// កូដលុបដែលកែសម្រួលរួច (Update ត្រង់ Filter និង Find)
 app.delete('/api/delete/:type/:id', (req, res) => {
     const { type, id } = req.params;
     let data = safeReadJSON(DATA_FILE, { products: [], banners: [] });
     const key = type === 'product' ? 'products' : 'banners';
     
-    const itemToDelete = data[key].find(i => i.id.toString() === id);
+    // ១. រក Item ដែលត្រូវលុប (ប្រើ == ដើម្បីឱ្យស្គាល់ទាំង String និង Number)
+    const itemToDelete = data[key].find(i => i.id == id); 
+    
     if (itemToDelete) {
-        const imgs = type === 'product' ? itemToDelete.images : [itemToDelete.image];
+        // ២. លុបរូបភាពក្នុង Folder
+        const imgs = type === 'product' ? (itemToDelete.images || []) : [itemToDelete.image];
         imgs.forEach(imgName => {
             if (imgName) {
                 const fullPath = path.join(__dirname, 'uploads', imgName);
                 if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
             }
         });
+        
+        // ៣. លុបទិន្នន័យចេញពី Array (ប្រើ != ដើម្បីចម្រោះយកតែ ID ដែលមិនមែនជា ID ចង់លុប)
+        data[key] = data[key].filter(i => i.id != id);
+        
+        // ៤. រក្សាទុកចូល File វិញ
+        safeWriteJSON(DATA_FILE, data);
+        return res.json({ success: true, message: `${type} deleted successfully` });
     }
-    data[key] = data[key].filter(i => i.id.toString() !== id);
-    safeWriteJSON(DATA_FILE, data);
-    res.json({ success: true });
+
+    res.status(404).json({ success: false, message: "រកទិន្នន័យមិនឃើញ!" });
 });
 
 // ================= 3. Order Management =================
