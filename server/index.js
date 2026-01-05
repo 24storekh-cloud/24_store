@@ -60,14 +60,12 @@ const upload = multer({ storage });
 
 // ================= 2. API Product & Banner Management =================
 
-// ទាញទិន្នន័យទាំងអស់ (Products, Banners, Orders)
 app.get('/api/data', (req, res) => {
     const data = safeReadJSON(DATA_FILE, { products: [], banners: [] });
     const orders = safeReadJSON(ORDERS_FILE, []);
     res.json({ products: data.products, banners: data.banners, orders: orders });
 });
 
-// បន្ថែមផលិតផលថ្មី ឬ Banner ថ្មី
 app.post('/api/upload', upload.any(), (req, res) => {
     try {
         const { type, name, price, cost, category, detail, title, stock } = req.body;
@@ -99,7 +97,6 @@ app.post('/api/upload', upload.any(), (req, res) => {
     }
 });
 
-// កែប្រែផលិតផល (Update Product)
 app.put('/api/update/product/:id', upload.any(), (req, res) => {
     try {
         const { id } = req.params;
@@ -109,19 +106,26 @@ app.put('/api/update/product/:id', upload.any(), (req, res) => {
         const idx = data.products.findIndex(p => p.id.toString() === id);
         if (idx !== -1) {
             let finalImages = data.products[idx].images;
-            // បើមាន Upload រូបភាពថ្មី ត្រូវជំនួសរូបភាពចាស់
+            
             if (req.files && req.files.length > 0) {
+                // លុបរូបភាពចាស់ៗចេញពី folder uploads ដើម្បីសន្សំ space
+                if (Array.isArray(data.products[idx].images)) {
+                    data.products[idx].images.forEach(imgName => {
+                        const oldPath = path.join(__dirname, 'uploads', imgName);
+                        if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+                    });
+                }
                 finalImages = req.files.map(f => f.filename);
             }
 
             data.products[idx] = {
                 ...data.products[idx],
-                name,
-                price: parseFloat(price),
-                cost: parseFloat(cost),
-                category,
-                detail,
-                stock: parseInt(stock),
+                name: name || data.products[idx].name,
+                price: price ? parseFloat(price) : data.products[idx].price,
+                cost: cost ? parseFloat(cost) : data.products[idx].cost,
+                category: category || data.products[idx].category,
+                detail: detail || data.products[idx].detail,
+                stock: stock !== undefined ? parseInt(stock) : data.products[idx].stock,
                 images: finalImages
             };
             
@@ -135,7 +139,6 @@ app.put('/api/update/product/:id', upload.any(), (req, res) => {
     }
 });
 
-// លុបទិន្នន័យ (Product ឬ Banner)
 app.delete('/api/delete/:type/:id', (req, res) => {
     const { type, id } = req.params;
     let data = safeReadJSON(DATA_FILE, { products: [], banners: [] });
@@ -156,9 +159,8 @@ app.delete('/api/delete/:type/:id', (req, res) => {
     res.json({ success: true });
 });
 
-// ================= 3. Order Management (កាត់ស្តុក + Telegram) =================
+// ================= 3. Order Management =================
 
-// ទទួលការកុម្ម៉ង់ពីអតិថិជន
 app.post('/api/orders', upload.any(), async (req, res) => {
     try {
         const orderData = req.body;
@@ -180,11 +182,10 @@ app.post('/api/orders', upload.any(), async (req, res) => {
             date: today
         };
 
-        // ១. ឆែក និងកាត់ស្តុកចេញពី data.json
+        // ១. កាត់ស្តុក
         if (orderData.productId) {
             let data = safeReadJSON(DATA_FILE, { products: [], banners: [] });
             const pIdx = data.products.findIndex(p => p.id.toString() === orderData.productId.toString());
-            
             if (pIdx !== -1) {
                 if (data.products[pIdx].stock < newOrder.quantity) {
                     return res.status(400).json({ success: false, message: "ទំនិញនេះអស់ពីស្តុកហើយ!" });
@@ -194,40 +195,42 @@ app.post('/api/orders', upload.any(), async (req, res) => {
             }
         }
 
-        // ២. រក្សាទុកក្នុង orders.json
+        // ២. រក្សាទុក Order
         let orders = safeReadJSON(ORDERS_FILE, []);
         orders.unshift(newOrder); 
         safeWriteJSON(ORDERS_FILE, orders);
 
-        // ៣. ផ្ញើទៅ Telegram
-        const message = `🔔 <b>ការកុម្ម៉ង់ថ្មី!</b>\n` +
-                        `--------------------------\n` +
-                        `👤 ឈ្មោះ: ${newOrder.customerName}\n` +
-                        `📞 លេខ: ${newOrder.phoneNumber}\n` +
-                        `📦 ទំនិញ: ${newOrder.productName} (x${newOrder.quantity})\n` +
-                        `💰 <b>សរុប: $${newOrder.total.toFixed(2)}</b>\n` +
-                        `💳 ទូទាត់: ${newOrder.paymentMethod}\n` +
-                        `📍 ទីតាំង: ${newOrder.location}\n` +
-                        `--------------------------\n` +
-                        `⏰ ${today}`;
+        // ៣. ផ្ញើទៅ Telegram (ប្រើ Try/Catch ដាច់ដោយឡែកដើម្បីការពារ Server គាំងបើសិនជា Telegram Error)
+        try {
+            const message = `🔔 <b>ការកុម្ម៉ង់ថ្មី!</b>\n` +
+                            `--------------------------\n` +
+                            `👤 ឈ្មោះ: ${newOrder.customerName}\n` +
+                            `📞 លេខ: ${newOrder.phoneNumber}\n` +
+                            `📦 ទំនិញ: ${newOrder.productName} (x${newOrder.quantity})\n` +
+                            `💰 <b>សរុប: $${newOrder.total.toFixed(2)}</b>\n` +
+                            `💳 ទូទាត់: ${newOrder.paymentMethod}\n` +
+                            `📍 ទីតាំង: ${newOrder.location}\n` +
+                            `--------------------------\n` +
+                            `⏰ ${today}`;
 
-        // ផ្ញើសារអក្សរ
-        await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-            chat_id: CHAT_ID,
-            text: message,
-            parse_mode: 'HTML'
-        });
-
-        // ប្រសិនបើមានរូបភាពវិក្កយបត្រ ផ្ញើទៅ Telegram
-        if (payslipFile && fs.existsSync(payslipFile.path)) {
-            const teleFormData = new FormData();
-            teleFormData.append('chat_id', CHAT_ID);
-            teleFormData.append('photo', fs.createReadStream(payslipFile.path));
-            teleFormData.append('caption', `🧾 វិក្កយបត្រពី៖ ${newOrder.customerName}\nID: ${newOrder.orderId}`);
-
-            await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, teleFormData, {
-                headers: teleFormData.getHeaders()
+            await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+                chat_id: CHAT_ID,
+                text: message,
+                parse_mode: 'HTML'
             });
+
+            if (payslipFile && fs.existsSync(payslipFile.path)) {
+                const teleFormData = new FormData();
+                teleFormData.append('chat_id', CHAT_ID);
+                teleFormData.append('photo', fs.createReadStream(payslipFile.path));
+                teleFormData.append('caption', `🧾 វិក្កយបត្រពី៖ ${newOrder.customerName}\nID: ${newOrder.orderId}`);
+
+                await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, teleFormData, {
+                    headers: teleFormData.getHeaders()
+                });
+            }
+        } catch (teleErr) {
+            console.error("Telegram error:", teleErr.message);
         }
 
         res.json({ success: true, orderId: newOrder.orderId });
@@ -238,7 +241,6 @@ app.post('/api/orders', upload.any(), async (req, res) => {
     }
 });
 
-// ប្តូរស្ថានភាពការកុម្ម៉ង់ (Pending -> Completed)
 app.patch('/api/orders/:id/status', (req, res) => {
     let orders = safeReadJSON(ORDERS_FILE, []);
     const index = orders.findIndex(o => o.orderId.toString() === req.params.id);
@@ -251,7 +253,6 @@ app.patch('/api/orders/:id/status', (req, res) => {
     }
 });
 
-// លុបការកុម្ម៉ង់
 app.delete('/api/orders/:id', (req, res) => {
     let orders = safeReadJSON(ORDERS_FILE, []);
     const orderToDelete = orders.find(o => o.orderId.toString() === req.params.id);
@@ -268,5 +269,4 @@ app.delete('/api/orders/:id', (req, res) => {
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
     console.log(`🚀 Server is running on port ${PORT}`);
-    console.log(`📁 Uploads folder: ${path.join(__dirname, 'uploads')}`);
 });
