@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import toast, { Toaster } from 'react-hot-toast';
 import { 
   LayoutDashboard, Package, ShoppingCart, 
   Image as ImageIcon, Plus, Search, X, 
-  BarChart3, RefreshCcw
+  BarChart3, RefreshCcw, Wifi, WifiOff
 } from 'lucide-react';
 
 import API_URL from './apiConfig'; 
@@ -20,6 +20,7 @@ const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [data, setData] = useState({ products: [], banners: [], orders: [] });
   const [loading, setLoading] = useState(true);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
   
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -34,17 +35,27 @@ const AdminDashboard = () => {
   const [previews, setPreviews] = useState([]);
   const [selectedImg, setSelectedImg] = useState(null);
 
-  // --- ១. អនុគមន៍ជំនួយសម្រាប់សម្អាត URL រូបភាព ---
-  const getCleanUrl = (img) => {
+  // --- ១. អនុគមន៍ជំនួយសម្រាប់សម្អាត URL រូបភាព (ដោះស្រាយបញ្ហា Mixed Content) ---
+  const getCleanUrl = useCallback((img) => {
     if (!img) return 'https://placehold.co/600x400?text=No+Image';
-    if (typeof img === 'string' && (img.startsWith('data:') || img.startsWith('blob:') || img.startsWith('http'))) return img; 
-    const baseUrl = API_URL.endsWith('/') ? API_URL.slice(0, -1) : API_URL;
-    return `${baseUrl}/uploads/${img}`; 
-  };
+    
+    // បើសិនជា URL ស្រាប់ (Blob ឬ Data)
+    if (typeof img === 'string' && (img.startsWith('data:') || img.startsWith('blob:'))) return img;
+    
+    // បើសិនជាមាន http រួចហើយ ត្រូវប្តូរវាទៅជា HTTPS ប្រសិនបើ Website ដើរលើ HTTPS
+    if (typeof img === 'string' && img.startsWith('http')) {
+      return img.replace('http://', 'https://');
+    }
 
-  // --- ២. ទាញទិន្នន័យពី API ---
-  const fetchData = async () => {
-    setLoading(true);
+    const baseUrl = API_URL.endsWith('/') ? API_URL.slice(0, -1) : API_URL;
+    // សម្អាត path ប្រសិនបើវាមានពាក្យ uploads/ ស្រាប់
+    const cleanPath = img.replace('uploads/', '');
+    return `${baseUrl}/uploads/${cleanPath}`; 
+  }, []);
+
+  // --- ២. ទាញទិន្នន័យពី API (Auto Update Logic) ---
+  const fetchData = async (showSilent = false) => {
+    if (!showSilent) setLoading(true);
     try {
       const res = await fetch(`${API_URL}/api/data`);
       if (!res.ok) throw new Error("Server Connection Failed");
@@ -55,7 +66,7 @@ const AdminDashboard = () => {
         orders: result.orders || []
       });
     } catch (err) {
-      toast.error("មិនអាចទាញទិន្នន័យបានទេ! សូមពិនិត្យមើល Server API");
+      if (!showSilent) toast.error("មិនអាចទាញទិន្នន័យបានទេ!");
     } finally {
       setLoading(false);
     }
@@ -63,26 +74,37 @@ const AdminDashboard = () => {
 
   useEffect(() => {
     fetchData();
-    // Auto-refresh រាល់ ១ នាទី
-    const interval = setInterval(fetchData, 60000); 
-    return () => clearInterval(interval);
+    
+    // ពិនិត្យស្ថានភាព Internet
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    // Auto-refresh រាល់ ៣០ វិនាទី ដើម្បីទទួលបាន Order ថ្មីៗ
+    const interval = setInterval(() => fetchData(true), 30000); 
+    
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
   }, []);
 
-  // --- ៣. ការចម្រោះទិន្នន័យ (Filter Logic) ---
+  // --- ៣. ការចម្រោះទិន្នន័យ (Memoized Filter) ---
   const filteredProducts = useMemo(() => {
     return data.products.filter(product => {
-      const name = product.name || "";
-      const matchesSearch = name.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesSearch = (product.name || "").toLowerCase().includes(searchTerm.toLowerCase());
       const matchesCategory = selectedCategory === 'all' || product.category === selectedCategory;
       return matchesSearch && matchesCategory;
     });
   }, [data.products, searchTerm, selectedCategory]);
 
   const filteredOrders = useMemo(() => {
-    return data.orders.filter(order => {
+    return [...data.orders].reverse().filter(order => {
       const term = orderSearch.toLowerCase();
       const customerName = (order.customerName || "").toLowerCase();
-      const phone = (order.phoneNumber || "").toString();
+      const phone = (order.customerPhone || "").toString();
       const matchesSearch = customerName.includes(term) || phone.includes(term);
       const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
       return matchesSearch && matchesStatus;
@@ -120,9 +142,9 @@ const AdminDashboard = () => {
         setIsModalOpen(false);
         setFiles([]); 
         setPreviews([]);
-        fetchData();
+        fetchData(); // Update UI ភ្លាមៗ
       } else {
-        throw new Error("API Response Error");
+        throw new Error("API Error");
       }
     } catch (err) { 
       toast.error("មានបញ្ហាក្នុងការរក្សាទុក!", { id: loadingToast }); 
@@ -138,8 +160,8 @@ const AdminDashboard = () => {
         body: JSON.stringify({ status: newStatus })
       });
       if (res.ok) {
-        fetchData();
-        toast.success(`Order #${id} បានប្តូរទៅ ${newStatus}`);
+        fetchData(true);
+        toast.success(`ស្ថានភាពប្តូរទៅ ${newStatus}`);
       }
     } catch (err) { toast.error("ប្តូរស្ថានភាពមិនបានជោគជ័យ!"); }
   };
@@ -168,8 +190,8 @@ const AdminDashboard = () => {
         const endpoint = type === 'order' ? `/api/orders/${id}` : `/api/delete/${type}/${id}`;
         const res = await fetch(`${API_URL}${endpoint}`, { method: 'DELETE' });
         if(res.ok) {
-            fetchData();
-            toast.success("លុបទិន្នន័យបានជោគជ័យ!");
+            fetchData(true);
+            toast.success("លុបបានជោគជ័យ!");
         }
       } catch (err) { toast.error("មិនអាចលុបបានទេ!"); }
     }
@@ -183,24 +205,27 @@ const AdminDashboard = () => {
 
       <main className="flex-1 p-6 md:p-10 overflow-y-auto max-h-screen">
         <header className="mb-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-           <div>
-            <h2 className="text-3xl font-black text-slate-800 uppercase italic">Admin Panel</h2>
-            <p className="text-slate-400 font-bold uppercase text-[10px] tracking-widest">Store Management v2.6</p>
-           </div>
-           <div className="flex items-center gap-3">
-             <button onClick={fetchData} className="p-3 bg-white border border-slate-100 rounded-2xl shadow-sm text-slate-400 hover:text-blue-600 transition-all">
-                <RefreshCcw size={20} className={loading ? "animate-spin text-blue-600" : ""} />
-             </button>
-             <div className="bg-white px-4 py-2 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-3">
-                <div className={`w-2 h-2 rounded-full ${loading ? 'bg-amber-400' : 'bg-green-500 animate-pulse'}`}></div>
-                <span className="text-[10px] font-black text-slate-500 uppercase tracking-tighter">
-                  {loading ? 'Fetching...' : 'System Live'}
-                </span>
-             </div>
-           </div>
+            <div>
+              <h2 className="text-3xl font-black text-slate-800 uppercase italic">Admin Panel</h2>
+              <div className="flex items-center gap-2 mt-1">
+                <p className="text-slate-400 font-bold uppercase text-[10px] tracking-widest">Store Management v2.6</p>
+                {isOnline ? <Wifi size={12} className="text-green-500" /> : <WifiOff size={12} className="text-red-500" />}
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <button onClick={() => fetchData()} className="p-3 bg-white border border-slate-100 rounded-2xl shadow-sm text-slate-400 hover:text-blue-600 transition-all active:rotate-180">
+                 <RefreshCcw size={20} className={loading ? "animate-spin text-blue-600" : ""} />
+              </button>
+              <div className="bg-white px-4 py-2 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-3">
+                 <div className={`w-2 h-2 rounded-full ${loading ? 'bg-amber-400 animate-pulse' : 'bg-green-500'}`}></div>
+                 <span className="text-[10px] font-black text-slate-500 uppercase tracking-tighter">
+                   {loading ? 'Updating...' : 'System Live'}
+                 </span>
+              </div>
+            </div>
         </header>
 
-        {/* Dashbaord Stats */}
+        {/* Dashboard View */}
         {activeTab === 'dashboard' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 animate-in fade-in duration-500">
             <StatCard label="Total Products" count={data.products.length} icon={<Package size={28}/>} color="blue" />
@@ -243,6 +268,7 @@ const AdminDashboard = () => {
                 }} 
                 onDelete={(type, id) => handleDelete(type, id)}
                 onUpdateStock={handleUpdateStock}
+                getCleanUrl={getCleanUrl}
             />
           </div>
         )}
@@ -260,6 +286,7 @@ const AdminDashboard = () => {
                   <option value="all">All Status</option>
                   <option value="Pending">Pending</option>
                   <option value="Completed">Completed</option>
+                  <option value="Cancelled">Cancelled</option>
                 </select>
                 <div className="relative flex-1 md:flex-none">
                   <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
@@ -296,6 +323,7 @@ const AdminDashboard = () => {
         onFileChange={(e) => {
           const sFiles = Array.from(e.target.files);
           setFiles(sFiles);
+          if (previews.some(p => p.startsWith('blob:'))) previews.forEach(p => URL.revokeObjectURL(p));
           setPreviews(sFiles.map(f => URL.createObjectURL(f)));
         }} 
         previews={previews}
@@ -308,7 +336,7 @@ const AdminDashboard = () => {
             <button className="absolute -top-12 right-0 text-white hover:text-red-500" onClick={() => setSelectedImg(null)}>
               <X size={40} />
             </button>
-            <img src={selectedImg} className="w-full h-auto rounded-[2rem] shadow-2xl border-4 border-white" alt="Slip" />
+            <img src={selectedImg} className="w-full h-auto rounded-[2rem] shadow-2xl border-4 border-white" alt="Slip" onError={(e) => e.target.src = 'https://placehold.co/400x600?text=Slip+Not+Found'} />
           </div>
         </div>
       )}
