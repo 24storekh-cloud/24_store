@@ -10,6 +10,11 @@ app.use(cors());
 app.use(express.json());
 app.use('/uploads', express.static('uploads'));
 
+// --- កំណត់ URL ឱ្យប្រែប្រួលតាមបរិស្ថាន (Local vs Render) ---
+const BASE_URL = process.env.NODE_ENV === 'production' 
+    ? 'https://your-backend-name.onrender.com' // <-- ដូរឈ្មោះនេះចេញ
+    : 'http://localhost:5000';
+
 const DATA_FILE = 'data.json';
 const ORDERS_FILE = 'orders.json';
 
@@ -18,10 +23,8 @@ const safeReadJSON = (filePath, defaultContent) => {
     try {
         if (!fs.existsSync(filePath)) return defaultContent;
         const content = fs.readFileSync(filePath, 'utf8');
-        if (!content.trim()) return defaultContent;
-        return JSON.parse(content);
+        return content.trim() ? JSON.parse(content) : defaultContent;
     } catch (err) {
-        console.error(`បញ្ហាអាន File ${filePath}:`, err.message);
         return defaultContent;
     }
 };
@@ -30,7 +33,7 @@ const safeWriteJSON = (filePath, data) => {
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
 };
 
-// --- ការកំណត់ Multer សម្រាប់ Upload រូបភាព ---
+// --- ការកំណត់ Multer ---
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
         if (!fs.existsSync('uploads')) fs.mkdirSync('uploads');
@@ -42,52 +45,43 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// ================= 1. API Telegram Notification =================
+// ================= 1. Telegram Notification =================
 app.post('/api/send-telegram', async (req, res) => {
     try {
         const { message } = req.body;
-        const BOT_TOKEN = '8227092903:AAFpSAV1ZRr8WRLCD23wCHhS_3teAEN_1SI'; 
-        const CHAT_ID = '7026983728';
+        const BOT_TOKEN = process.env.BOT_TOKEN || '8227092903:AAFpSAV1ZRr8WRLCD23wCHhS_3teAEN_1SI'; 
+        const CHAT_ID = process.env.CHAT_ID || '7026983728';
 
-        const telegramUrl = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
-        await axios.post(telegramUrl, {
+        await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
             chat_id: CHAT_ID,
             text: message,
             parse_mode: 'HTML'
         });
-
-        res.json({ success: true, message: 'ផ្ញើទៅ Telegram រួចរាល់!' });
+        res.json({ success: true });
     } catch (error) {
-        console.error('Telegram Error:', error.message);
-        res.status(500).json({ success: false, error: 'មិនអាចផ្ញើទៅ Telegram បានទេ' });
+        res.status(500).json({ success: false });
     }
 });
 
-// ================= 2. API Product & Banner Management =================
+// ================= 2. Product Management =================
 app.get('/api/data', (req, res) => {
     const data = safeReadJSON(DATA_FILE, { products: [], banners: [] });
     const orders = safeReadJSON(ORDERS_FILE, []);
-    res.json({
-        products: data.products || [],
-        banners: data.banners || [],
-        orders: orders
-    });
+    res.json({ ...data, orders });
 });
 
 app.post('/api/upload', upload.array('images', 5), (req, res) => {
     const { type, name, price, cost, category, detail, title, stock } = req.body;
     let data = safeReadJSON(DATA_FILE, { products: [], banners: [] });
-    const imageUrls = req.files ? req.files.map(f => `http://localhost:5000/uploads/${f.filename}`) : [];
+    
+    // កែទីនេះ៖ ប្រើ BASE_URL ជំនួស localhost
+    const imageUrls = req.files ? req.files.map(f => `${BASE_URL}/uploads/${f.filename}`) : [];
 
     if (type === 'product') {
         data.products.push({
             id: Date.now(),
-            name, 
-            price: parseFloat(price) || 0, 
-            cost: parseFloat(cost) || 0, // រក្សាទុកតម្លៃដើម
-            category, 
-            detail,
-            stock: parseInt(stock) || 0,
+            name, price: parseFloat(price), cost: parseFloat(cost),
+            category, detail, stock: parseInt(stock),
             images: imageUrls
         });
     } else {
@@ -100,31 +94,55 @@ app.post('/api/upload', upload.array('images', 5), (req, res) => {
 app.put('/api/update/:type/:id', upload.array('images', 5), (req, res) => {
     const { type, id } = req.params;
     let data = safeReadJSON(DATA_FILE, { products: [], banners: [] });
-    const collection = type === 'product' ? 'products' : 'banners';
-    const index = data[collection].findIndex(item => item.id.toString() === id);
+    const col = type === 'product' ? 'products' : 'banners';
+    const idx = data[col].findIndex(item => item.id.toString() === id);
 
-    if (index !== -1) {
+    if (idx !== -1) {
         if (req.body.update_type === 'stock_only') {
-            data.products[index].stock = parseInt(req.body.stock);
+            data.products[idx].stock = parseInt(req.body.stock);
         } else {
             const newImages = req.files && req.files.length > 0 
-                ? req.files.map(f => `http://localhost:5000/uploads/${f.filename}`) 
-                : (type === 'product' ? data.products[index].images : [data.banners[index].image]);
+                ? req.files.map(f => `${BASE_URL}/uploads/${f.filename}`) 
+                : (type === 'product' ? data[col][idx].images : [data[col][idx].image]);
             
-            if (type === 'product') {
-                data.products[index] = { 
-                    ...data.products[index], 
-                    ...req.body, 
-                    price: parseFloat(req.body.price),
-                    cost: parseFloat(req.body.cost), // Update តម្លៃដើម
-                    images: newImages 
-                };
-            } else {
-                data.banners[index] = { ...data.banners[index], title: req.body.title, image: newImages[0] };
-            }
+            data[col][idx] = { ...data[col][idx], ...req.body, images: newImages };
         }
         safeWriteJSON(DATA_FILE, data);
         res.json({ success: true });
+    }
+});
+
+// ================= 3. Order Management =================
+app.post('/api/orders', upload.single('payslip'), (req, res) => {
+    try {
+        const orderData = req.body;
+        const payslipUrl = req.file ? `${BASE_URL}/uploads/${req.file.filename}` : null;
+        const today = new Date().toISOString().split('T')[0];
+
+        let orders = safeReadJSON(ORDERS_FILE, []);
+        const newOrder = {
+            orderId: Date.now(),
+            ...orderData,
+            payslip: payslipUrl,
+            status: 'Pending',
+            date: today
+        };
+
+        orders.unshift(newOrder); 
+        safeWriteJSON(ORDERS_FILE, orders);
+
+        // កាត់ស្តុក
+        if (orderData.productId) {
+            let data = safeReadJSON(DATA_FILE, { products: [], banners: [] });
+            const pIdx = data.products.findIndex(p => p.id.toString() === orderData.productId.toString());
+            if (pIdx !== -1) {
+                data.products[pIdx].stock -= parseInt(orderData.qty || 1);
+                safeWriteJSON(DATA_FILE, data);
+            }
+        }
+        res.json({ success: true, orderId: newOrder.orderId });
+    } catch (error) {
+        res.status(500).json({ success: false });
     }
 });
 
@@ -137,66 +155,15 @@ app.delete('/api/delete/:type/:id', (req, res) => {
     res.json({ success: true });
 });
 
-// ================= 3. API Order Management (Finance Sync) =================
-app.post('/api/orders', upload.single('payslip'), (req, res) => {
-    try {
-        const orderData = req.body;
-        const payslipUrl = req.file ? `http://localhost:5000/uploads/${req.file.filename}` : null;
-        
-        // បង្កើតកាលបរិច្ឆេទ YYYY-MM-DD សម្រាប់ប្រើក្នុង FinanceReport
-        const today = new Date().toISOString().split('T')[0];
-
-        let orders = safeReadJSON(ORDERS_FILE, []);
-        const newOrder = {
-            orderId: Date.now(),
-            ...orderData,
-            quantity: parseInt(orderData.qty || orderData.quantity) || 1,
-            total: parseFloat(orderData.total) || 0,
-            payslip: payslipUrl,
-            status: 'Pending',
-            date: today // ចំណុចសំខាន់សម្រាប់ Month Filter
-        };
-
-        orders.unshift(newOrder); 
-        safeWriteJSON(ORDERS_FILE, orders);
-
-        // --- មុខងារកាត់ស្តុក ---
-        if (orderData.productId) {
-            let data = safeReadJSON(DATA_FILE, { products: [], banners: [] });
-            const pIdx = data.products.findIndex(p => p.id.toString() === orderData.productId.toString());
-            if (pIdx !== -1) {
-                const buyQty = parseInt(orderData.qty) || 1;
-                if (data.products[pIdx].stock >= buyQty) {
-                    data.products[pIdx].stock -= buyQty;
-                    safeWriteJSON(DATA_FILE, data);
-                }
-            }
-        }
-        res.json({ success: true, orderId: newOrder.orderId });
-    } catch (error) {
-        console.error("Order Post Error:", error);
-        res.status(500).json({ success: false });
-    }
-});
-
 app.patch('/api/orders/:id/status', (req, res) => {
     let orders = safeReadJSON(ORDERS_FILE, []);
-    const index = orders.findIndex(o => o.orderId.toString() === req.params.id);
-    if (index !== -1) {
-        orders[index].status = req.body.status;
+    const idx = orders.findIndex(o => o.orderId.toString() === req.params.id);
+    if (idx !== -1) {
+        orders[idx].status = req.body.status;
         safeWriteJSON(ORDERS_FILE, orders);
         res.json({ success: true });
     }
 });
 
-app.delete('/api/orders/:id', (req, res) => {
-    let orders = safeReadJSON(ORDERS_FILE, []);
-    const filtered = orders.filter(o => o.orderId.toString() !== req.params.id);
-    safeWriteJSON(ORDERS_FILE, filtered);
-    res.json({ success: true });
-});
-
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-
-// app.listen(5000, () => console.log("🚀 Server is running on http://localhost:5000"));
+app.listen(PORT, () => console.log(`🚀 Server on ${BASE_URL}`));

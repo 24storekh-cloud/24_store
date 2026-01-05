@@ -1,15 +1,37 @@
 import React from 'react';
-import { X, Upload, DollarSign, Tag, layers } from 'lucide-react';
+import { X, Upload } from 'lucide-react';
+import API_URL from '../apiConfig'; // ១. Import API_URL ដើម្បីប្រើលាង URL
 
 const ProductModal = ({ 
   isOpen, isEditMode, formData, setFormData, 
   onClose, onSubmit, onFileChange, previews 
 }) => {
+  
+  // ២. បង្កើត Function ជំនួយសម្រាប់លាង URL រូបភាពចាស់ៗ
+  const getCleanPreviewUrl = (src) => {
+    if (!src) return '';
+    // ប្រសិនបើ src ជា Blob (រូបភាពថ្មីដែលទើបជ្រើសរើស) ទុកវាដដែល
+    if (typeof src === 'string' && src.startsWith('blob:')) return src;
+    
+    // ប្រសិនបើ src ជាប់ localhost (រូបភាពចាស់ពី DB)
+    if (typeof src === 'string' && src.includes('localhost:5000')) {
+      return src.replace('http://localhost:5000', API_URL);
+    }
+    
+    // ប្រសិនបើជា Path ខ្លី
+    if (typeof src === 'string' && !src.startsWith('http')) {
+      return `${API_URL}/${src}`;
+    }
+    
+    return src;
+  };
+
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
       <div className="bg-white w-full max-w-xl rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+        
         {/* Header */}
         <div className="p-8 border-b border-slate-50 flex justify-between items-center bg-slate-50/50">
           <div>
@@ -36,7 +58,7 @@ const ProductModal = ({
             />
           </div>
 
-          {/* Pricing Section (Price & Cost) */}
+          {/* Pricing Section */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <label className="text-[10px] font-black text-slate-400 uppercase ml-2 italic">Selling Price ($)</label>
@@ -58,7 +80,7 @@ const ProductModal = ({
                 step="0.01"
                 className="w-full p-4 bg-red-50/30 rounded-2xl outline-none font-bold focus:ring-2 focus:ring-red-500 transition-all border border-transparent focus:bg-white text-red-600" 
                 placeholder="តម្លៃដើម" 
-                value={formData.cost} 
+                value={formData.cost || ''} 
                 onChange={e => setFormData({...formData, cost: e.target.value})} 
               />
             </div>
@@ -113,12 +135,17 @@ const ProductModal = ({
             </label>
           </div>
 
-          {/* Image Previews */}
-          {previews.length > 0 && (
+          {/* Image Previews - បានកែសម្រួលដើម្បីឱ្យបង្ហាញរូបភាពបានត្រឹមត្រូវ */}
+          {previews && previews.length > 0 && (
             <div className="flex gap-3 overflow-x-auto py-2 scrollbar-hide">
               {previews.map((src, i) => (
                 <div key={i} className="relative flex-shrink-0">
-                  <img src={src} className="w-20 h-20 rounded-2xl object-cover shadow-md border-2 border-white" alt="" />
+                  <img 
+                    src={getCleanPreviewUrl(src)} 
+                    className="w-20 h-20 rounded-2xl object-cover shadow-md border-2 border-white" 
+                    alt="Preview" 
+                    onError={(e) => { e.target.src = 'https://placehold.co/100x100?text=Error'; }}
+                  />
                   <div className="absolute top-1 right-1 bg-white rounded-full p-1 shadow-sm">
                     <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
                   </div>
