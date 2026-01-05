@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { X, Upload, Package } from 'lucide-react';
 import API_URL from '../apiConfig';
 
@@ -10,35 +10,45 @@ const ProductModal = ({
   // ១. អនុគមន៍ជំនួយសម្រាប់សម្អាត URL រូបភាព
   const getCleanPreviewUrl = (src) => {
     if (!src) return '';
-    // បើជា Blob (រូបភាពថ្មី) ឬ Base64
     if (typeof src === 'string' && (src.startsWith('blob:') || src.startsWith('data:'))) return src;
-    // បើជាឈ្មោះ File ធម្មតា ភ្ជាប់ទៅកាន់ Server uploads
+    
+    // លុប / ចេញពីចុង API_URL ប្រសិនបើមាន ដើម្បីការពារជាន់គ្នា
     const baseUrl = API_URL.endsWith('/') ? API_URL.slice(0, -1) : API_URL;
     return `${baseUrl}/uploads/${src}`;
   };
+
+  // បិទការ Scroll របស់ Page ខាងក្រោមនៅពេល Modal បើក
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => { document.body.style.overflow = 'unset'; };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-      <div className="bg-white w-full max-w-xl rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+      <div className="bg-white w-full max-w-xl rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 border border-white">
         
         {/* Header */}
         <div className="p-8 border-b border-slate-50 flex justify-between items-center bg-slate-50/50">
           <div className="flex items-center gap-3">
-            <div className="p-3 bg-blue-600 rounded-2xl text-white">
+            <div className="p-3 bg-blue-600 rounded-2xl text-white shadow-lg shadow-blue-200">
                 <Package size={20} />
             </div>
             <div>
-              <h3 className="text-xl font-black text-slate-800 uppercase italic">
+              <h3 className="text-xl font-black text-slate-800 uppercase italic leading-none">
                 {isEditMode ? 'Edit Product' : 'Add New Product'}
               </h3>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Management v2.6 • Inventory Control</p>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1.5">Management v2.6 • Inventory Control</p>
             </div>
           </div>
           <button 
             onClick={onClose} 
-            className="p-3 hover:bg-slate-100 rounded-2xl transition-all text-slate-400 hover:text-red-500"
+            className="p-3 hover:bg-white rounded-2xl transition-all text-slate-400 hover:text-red-500 hover:shadow-sm"
           >
             <X size={24}/>
           </button>
@@ -52,7 +62,7 @@ const ProductModal = ({
             <input 
               required 
               className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold focus:ring-2 focus:ring-blue-500 transition-all border border-transparent focus:bg-white" 
-              placeholder="ឈ្មោះផលិតផល..." 
+              placeholder="Ex: iPhone 15 Pro Max..." 
               value={formData.name || ''} 
               onChange={e => setFormData({...formData, name: e.target.value})} 
             />
@@ -93,7 +103,7 @@ const ProductModal = ({
             <div className="space-y-2">
               <label className="text-[10px] font-black text-slate-400 uppercase ml-2 tracking-widest">Category</label>
               <select 
-                className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold cursor-pointer border border-transparent focus:border-blue-500 transition-all" 
+                className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold cursor-pointer border border-transparent focus:border-blue-500 transition-all appearance-none" 
                 value={formData.category || 'phone'} 
                 onChange={e => setFormData({...formData, category: e.target.value})}
               >
@@ -111,7 +121,7 @@ const ProductModal = ({
                 min="0"
                 className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold focus:ring-2 focus:ring-blue-500 transition-all border border-transparent focus:bg-white" 
                 placeholder="0" 
-                value={formData.stock || 0} 
+                value={formData.stock || ''} 
                 onChange={e => setFormData({...formData, stock: e.target.value})} 
               />
             </div>
@@ -131,27 +141,32 @@ const ProductModal = ({
           {/* Image Upload Area */}
           <div className="space-y-2">
             <label className="text-[10px] font-black text-slate-400 uppercase ml-2 tracking-widest">Product Images</label>
-            <label className="block p-8 border-4 border-dashed border-slate-100 rounded-[2.5rem] hover:border-blue-200 hover:bg-blue-50/20 transition-all cursor-pointer text-center group">
+            <label className="block p-8 border-4 border-dashed border-slate-100 rounded-[2.5rem] hover:border-blue-200 hover:bg-blue-50/20 transition-all cursor-pointer text-center group relative overflow-hidden">
               <input type="file" multiple className="hidden" onChange={onFileChange} accept="image/*" />
-              <Upload className="mx-auto text-slate-300 group-hover:text-blue-500 group-hover:scale-110 transition-all mb-2" size={32} />
-              <p className="text-[10px] font-black text-slate-400 uppercase group-hover:text-blue-600 transition-colors">ចុចដើម្បីជ្រើសរើសរូបភាព (អាចលើសពី ១)</p>
+              <div className="relative z-10">
+                <Upload className="mx-auto text-slate-300 group-hover:text-blue-500 group-hover:scale-110 transition-all mb-2" size={32} />
+                <p className="text-[10px] font-black text-slate-400 uppercase group-hover:text-blue-600 transition-colors">Select Photos (Multi-selection)</p>
+              </div>
             </label>
           </div>
 
           {/* Previews */}
           {previews && previews.length > 0 && (
-            <div className="space-y-2">
-              <p className="text-[9px] font-black text-blue-500 uppercase ml-2">Selected Preview ({previews.length})</p>
-              <div className="flex gap-3 overflow-x-auto py-3 px-1 scrollbar-hide">
+            <div className="space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
+              <p className="text-[9px] font-black text-blue-500 uppercase ml-2 flex items-center gap-2">
+                <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse"></span>
+                Selected Preview ({previews.length})
+              </p>
+              <div className="flex gap-4 overflow-x-auto py-4 px-2 scrollbar-hide bg-slate-50 rounded-[2rem]">
                 {previews.map((src, i) => (
-                  <div key={i} className="relative flex-shrink-0 animate-in fade-in zoom-in duration-300">
+                  <div key={i} className="relative flex-shrink-0 group/img">
                     <img 
                       src={getCleanPreviewUrl(src)} 
-                      className="w-24 h-24 rounded-3xl object-cover shadow-lg border-4 border-white ring-1 ring-slate-100" 
+                      className="w-24 h-24 rounded-3xl object-cover shadow-md border-4 border-white ring-1 ring-slate-100 group-hover/img:scale-105 transition-all" 
                       alt={`Preview ${i}`} 
                       onError={(e) => { e.target.src = 'https://placehold.co/100x100?text=Error'; }}
                     />
-                    <div className="absolute -top-1 -right-1 bg-blue-600 text-white w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border-2 border-white shadow-sm">
+                    <div className="absolute -top-2 -right-2 bg-blue-600 text-white w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black border-4 border-white shadow-lg">
                       {i + 1}
                     </div>
                   </div>
@@ -164,7 +179,7 @@ const ProductModal = ({
           <div className="pt-4 sticky bottom-0 bg-white pb-2">
             <button 
               type="submit" 
-              className="w-full py-5 bg-blue-600 text-white rounded-[2rem] font-black text-lg hover:bg-blue-700 shadow-xl shadow-blue-100 active:scale-[0.98] transition-all flex items-center justify-center gap-3 uppercase italic"
+              className="w-full py-5 bg-blue-600 text-white rounded-[2rem] font-black text-lg hover:bg-blue-700 shadow-xl shadow-blue-100 active:scale-[0.98] transition-all flex items-center justify-center gap-3 uppercase italic tracking-wider"
             >
               {isEditMode ? 'Update Database' : 'Publish Product'}
             </button>
