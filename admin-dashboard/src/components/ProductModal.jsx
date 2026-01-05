@@ -1,22 +1,11 @@
 import React, { useEffect } from 'react';
 import { X, Upload, Package } from 'lucide-react';
-import API_URL from '../apiConfig';
 
 const ProductModal = ({ 
   isOpen, isEditMode, formData, setFormData, 
-  onClose, onSubmit, onFileChange, previews 
+  onClose, onSubmit, onFileChange, previews, getCleanUrl 
 }) => {
   
-  // ១. អនុគមន៍ជំនួយសម្រាប់សម្អាត URL រូបភាព
-  const getCleanPreviewUrl = (src) => {
-    if (!src) return '';
-    if (typeof src === 'string' && (src.startsWith('blob:') || src.startsWith('data:'))) return src;
-    
-    // លុប / ចេញពីចុង API_URL ប្រសិនបើមាន ដើម្បីការពារជាន់គ្នា
-    const baseUrl = API_URL.endsWith('/') ? API_URL.slice(0, -1) : API_URL;
-    return `${baseUrl}/uploads/${src}`;
-  };
-
   // បិទការ Scroll របស់ Page ខាងក្រោមនៅពេល Modal បើក
   useEffect(() => {
     if (isOpen) {
@@ -161,7 +150,8 @@ const ProductModal = ({
                 {previews.map((src, i) => (
                   <div key={i} className="relative flex-shrink-0 group/img">
                     <img 
-                      src={getCleanPreviewUrl(src)} 
+                      // ប្រើ getCleanUrl ដែលបញ្ជូនមកពី App.js ផ្ទាល់
+                      src={getCleanUrl(src)} 
                       className="w-24 h-24 rounded-3xl object-cover shadow-md border-4 border-white ring-1 ring-slate-100 group-hover/img:scale-105 transition-all" 
                       alt={`Preview ${i}`} 
                       onError={(e) => { e.target.src = 'https://placehold.co/100x100?text=Error'; }}
