@@ -7,7 +7,12 @@ const axios = require('axios');
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+
+// បង្កើន limit ដើម្បីទទួលរូបភាព Base64 ធំៗ
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+// បន្តបើក static សម្រាប់ legacy files (បើមាន)
 app.use('/uploads', express.static('uploads'));
 
 const DATA_FILE = 'data.json';
@@ -30,7 +35,15 @@ const safeWriteJSON = (filePath, data) => {
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
 };
 
-// --- ការកំណត់ Multer សម្រាប់ Upload រូបភាព ---
+// មុខងារបម្លែងរូបភាពទៅជា Base64 string
+const fileToBase64 = (filePath) => {
+    const bitmap = fs.readFileSync(filePath);
+    const extension = path.extname(filePath).replace('.', '');
+    const base64Content = bitmap.toString('base64');
+    return `data:image/${extension};base64,${base64Content}`;
+};
+
+// --- ការកំណត់ Multer សម្រាប់ Upload បណ្តោះអាសន្ន ---
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
         if (!fs.existsSync('uploads')) fs.mkdirSync('uploads');
@@ -77,22 +90,33 @@ app.get('/api/data', (req, res) => {
 app.post('/api/upload', upload.array('images', 5), (req, res) => {
     const { type, name, price, cost, category, detail, title, stock } = req.body;
     let data = safeReadJSON(DATA_FILE, { products: [], banners: [] });
-    const imageUrls = req.files ? req.files.map(f => `http://localhost:5000/uploads/${f.filename}`) : [];
+
+    // បម្លែង Files ទៅជា Base64 និងលុប File ចេញពី folder ភ្លាមៗ
+    const base64Images = req.files ? req.files.map(f => {
+        const b64 = fileToBase64(f.path);
+        fs.unlinkSync(f.path); // លុប File ចេញដើម្បីកុំឱ្យពេញ Storage
+        return b64;
+    }) : [];
 
     if (type === 'product') {
         data.products.push({
             id: Date.now(),
             name, 
             price: parseFloat(price) || 0, 
-            cost: parseFloat(cost) || 0, // រក្សាទុកតម្លៃដើម
+            cost: parseFloat(cost) || 0,
             category, 
             detail,
             stock: parseInt(stock) || 0,
-            images: imageUrls
+            images: base64Images
         });
     } else {
-        data.banners.push({ id: Date.now(), title, image: imageUrls[0] || '' });
+        data.banners.push({ 
+            id: Date.now(), 
+            title, 
+            image: base64Images[0] || '' 
+        });
     }
+    
     safeWriteJSON(DATA_FILE, data);
     res.json({ success: true });
 });
@@ -107,20 +131,28 @@ app.put('/api/update/:type/:id', upload.array('images', 5), (req, res) => {
         if (req.body.update_type === 'stock_only') {
             data.products[index].stock = parseInt(req.body.stock);
         } else {
-            const newImages = req.files && req.files.length > 0 
-                ? req.files.map(f => `http://localhost:5000/uploads/${f.filename}`) 
-                : (type === 'product' ? data.products[index].images : [data.banners[index].image]);
+            // ឆែកមើលបើមានការ upload រូបថ្មី
+            let finalImages;
+            if (req.files && req.files.length > 0) {
+                finalImages = req.files.map(f => {
+                    const b64 = fileToBase64(f.path);
+                    fs.unlinkSync(f.path);
+                    return b64;
+                });
+            } else {
+                finalImages = type === 'product' ? data.products[index].images : [data.banners[index].image];
+            }
             
             if (type === 'product') {
                 data.products[index] = { 
                     ...data.products[index], 
                     ...req.body, 
                     price: parseFloat(req.body.price),
-                    cost: parseFloat(req.body.cost), // Update តម្លៃដើម
-                    images: newImages 
+                    cost: parseFloat(req.body.cost),
+                    images: finalImages 
                 };
             } else {
-                data.banners[index] = { ...data.banners[index], title: req.body.title, image: newImages[0] };
+                data.banners[index] = { ...data.banners[index], title: req.body.title, image: finalImages[0] };
             }
         }
         safeWriteJSON(DATA_FILE, data);
@@ -137,24 +169,28 @@ app.delete('/api/delete/:type/:id', (req, res) => {
     res.json({ success: true });
 });
 
-// ================= 3. API Order Management (Finance Sync) =================
+// ================= 3. API Order Management =================
 app.post('/api/orders', upload.single('payslip'), (req, res) => {
     try {
         const orderData = req.body;
-        const payslipUrl = req.file ? `http://localhost:5000/uploads/${req.file.filename}` : null;
-        
-        // បង្កើតកាលបរិច្ឆេទ YYYY-MM-DD សម្រាប់ប្រើក្នុង FinanceReport
-        const today = new Date().toISOString().split('T')[0];
+        let payslipBase64 = null;
 
+        if (req.file) {
+            payslipBase64 = fileToBase64(req.file.path);
+            fs.unlinkSync(req.file.path); // លុប file ចេញ
+        }
+        
+        const today = new Date().toISOString().split('T')[0];
         let orders = safeReadJSON(ORDERS_FILE, []);
+        
         const newOrder = {
             orderId: Date.now(),
             ...orderData,
             quantity: parseInt(orderData.qty || orderData.quantity) || 1,
             total: parseFloat(orderData.total) || 0,
-            payslip: payslipUrl,
+            payslip: payslipBase64,
             status: 'Pending',
-            date: today // ចំណុចសំខាន់សម្រាប់ Month Filter
+            date: today
         };
 
         orders.unshift(newOrder); 
@@ -197,6 +233,4 @@ app.delete('/api/orders/:id', (req, res) => {
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-
-// app.listen(5000, () => console.log("🚀 Server is running on http://localhost:5000"));
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
