@@ -10,14 +10,24 @@ const ProductCard = ({ name, price, image }) => {
     // ២. ករណីរូបភាពជា Array (យកតែរូបទី១)
     let finalImg = Array.isArray(img) ? img[0] : img;
 
-    // ៣. បើក្នុង Database ជាប់ localhost ត្រូវដូរទៅជា Link Render ភ្លាម
-    if (typeof finalImg === 'string' && finalImg.includes('localhost:5000')) {
+    if (typeof finalImg !== 'string') return 'https://placehold.co/400x400?text=Invalid+Data';
+
+    // ៣. បើជាប្រភេទ Base64 (data:image/...) ឱ្យវាបង្ហាញផ្ទាល់តែម្ដង
+    if (finalImg.startsWith('data:')) {
+      return finalImg;
+    }
+
+    // ៤. បើក្នុង Database ជាប់ localhost ត្រូវដូរទៅជា Link Render ភ្លាម
+    if (finalImg.includes('localhost:5000')) {
       return finalImg.replace('http://localhost:5000', API_URL);
     }
 
-    // ៤. បើជា Path ខ្លី (uploads/...)
-    if (typeof finalImg === 'string' && !finalImg.startsWith('http')) {
-      return `${API_URL}/${finalImg}`;
+    // ៥. បើជា Path ខ្លី (uploads/...) ត្រូវបន្ថែម API_URL
+    if (!finalImg.startsWith('http')) {
+      // លាងសញ្ញា / ដើម្បីកុំឱ្យជាន់គ្នា (ឧទាហរណ៍៖ ...com//uploads)
+      const baseUrl = API_URL.endsWith('/') ? API_URL.slice(0, -1) : API_URL;
+      const cleanPath = finalImg.startsWith('/') ? finalImg.slice(1) : finalImg;
+      return `${baseUrl}/${cleanPath}`;
     }
 
     return finalImg;
@@ -31,8 +41,10 @@ const ProductCard = ({ name, price, image }) => {
           alt={name} 
           className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" 
           onError={(e) => { 
-            e.target.onerror = null; 
-            e.target.src = 'https://placehold.co/400x400?text=Image+Not+Found'; 
+            // បើនៅតែ Error ទៀត ដាក់រូប Not Found
+            if (e.target.src !== 'https://placehold.co/400x400?text=Image+Not+Found') {
+              e.target.src = 'https://placehold.co/400x400?text=Image+Not+Found'; 
+            }
           }}
         />
       </div>
@@ -42,10 +54,9 @@ const ProductCard = ({ name, price, image }) => {
           {name}
         </h3>
         <p className="text-blue-600 font-black text-xl">
-          ${Number(price).toFixed(2)}
+          ${Number(price).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </p>
         
-        {/* ប៊ូតុងរុញទៅក្រោមបំផុត */}
         <div className="mt-auto pt-4">
           <button className="w-full bg-slate-900 text-white py-3 rounded-2xl font-bold hover:bg-blue-600 transition-all shadow-lg shadow-slate-100 active:scale-95">
             មើលលម្អិត
