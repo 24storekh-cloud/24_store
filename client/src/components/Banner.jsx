@@ -86,18 +86,6 @@ const Banner = () => {
                   e.target.src = 'https://placehold.co/1200x600?text=Banner+Not+Found';
                 }}
               />
-              
-              {/* Overlay Content */}
-              <div className="absolute inset-0 bg-gradient-to-r from-black/50 to-transparent flex items-center px-8 md:px-20">
-                <div className={`max-w-lg transition-all duration-700 delay-100 ${currentIndex === index ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10'}`}>
-                  <h2 className="text-white text-2xl md:text-5xl font-black mb-4 leading-tight uppercase italic drop-shadow-md">
-                    {banner.title}
-                  </h2>
-                  <button className="bg-blue-600 text-white px-6 py-2.5 md:px-8 md:py-3 rounded-xl font-bold text-sm md:text-base hover:bg-white hover:text-blue-600 transition-all active:scale-95 shadow-lg">
-                    ទិញឥឡូវនេះ
-                  </button>
-                </div>
-              </div>
             </div>
           ))}
         </div>
