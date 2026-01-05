@@ -47,7 +47,7 @@ const Checkout = () => {
     }
   }, [formData.locationType]);
 
-  // សម្អាត URL រូបភាពពេល Component លែងប្រើ
+  // សម្អាត URL រូបភាពពេល Component លែងប្រើ ដើម្បីកុំឱ្យស៊ី Memory
   useEffect(() => {
     return () => {
       if (previewUrl) URL.revokeObjectURL(previewUrl);
@@ -59,7 +59,8 @@ const Checkout = () => {
     if (file) {
       setPayslip(file);
       if (previewUrl) URL.revokeObjectURL(previewUrl);
-      setPreviewUrl(URL.createObjectURL(file));
+      const url = URL.createObjectURL(file);
+      setPreviewUrl(url);
     }
   };
 
@@ -71,11 +72,8 @@ const Checkout = () => {
     }
 
     setLoading(true);
-    const orderData = new FormData();
-    orderData.append('customerName', formData.name);
-    orderData.append('customerPhone', formData.phone);
-    orderData.append('customerAddress', formData.address);
-    
+
+    // រៀបចំ Shipping Info សម្រាប់ផ្ញើទៅ Server
     let shippingInfo = formData.locationType;
     if (formData.locationType === 'តាមខេត្ត') {
       if (formData.shippingCompany === 'ឡានឈ្នួល / ផ្ញើតាមឡាន') {
@@ -84,21 +82,45 @@ const Checkout = () => {
         shippingInfo += ` (${formData.shippingCompany})`;
       }
     }
-    orderData.append('location', shippingInfo);
-    orderData.append('paymentMethod', formData.paymentMethod);
-    orderData.append('productName', cartItems.map(i => `${i.name} (x${i.quantity})`).join(', '));
-    orderData.append('qty', totalItems);
-    orderData.append('total', finalTotal.toFixed(2));
-    if (payslip) orderData.append('payslip', payslip);
+
+    const orderPayload = new FormData();
+    orderPayload.append('customerName', formData.name);
+    orderPayload.append('customerPhone', formData.phone);
+    orderPayload.append('customerAddress', formData.address);
+    orderPayload.append('location', shippingInfo);
+    orderPayload.append('paymentMethod', formData.paymentMethod);
+    orderPayload.append('productName', cartItems.map(i => `${i.name} (x${i.quantity})`).join(', '));
+    orderPayload.append('qty', totalItems);
+    orderPayload.append('total', finalTotal.toFixed(2));
+    if (payslip) orderPayload.append('payslip', payslip);
 
     try {
-      const response = await fetch(`${API_URL}/api/orders`, { method: 'POST', body: orderData });
+      const response = await fetch(`${API_URL}/api/orders`, { 
+        method: 'POST', 
+        body: orderPayload 
+      });
+
       if (response.ok) {
-        alert("🎉 ការកុម្ម៉ង់ជោគជ័យ! អរគុណសម្រាប់ការគាំទ្រ។");
+        // បង្កើត Object ទិន្នន័យដើម្បីបោះទៅទំព័រ Success
+        const orderSummary = {
+          id: 'ORD-' + Math.floor(10000 + Math.random() * 90000),
+          customerName: formData.name,
+          phone: formData.phone,
+          address: `${formData.address} (${shippingInfo})`,
+          productName: cartItems.map(i => `${i.name}`).join(' + '),
+          qty: totalItems,
+          total: finalTotal.toFixed(2),
+          payslip: previewUrl // បញ្ជូន Preview URL ទៅបង្ហាញ
+        };
+
         clearCart();
-        navigate('/');
+        // បោះទៅកាន់ SuccessPage ជាមួយ state
+        navigate('/success', { state: { order: orderSummary } });
+      } else {
+        alert("❌ ការកុម្ម៉ង់មិនជោគជ័យ! សូមពិនិត្យទិន្នន័យឡើងវិញ។");
       }
     } catch (error) {
+      console.error("Checkout Error:", error);
       alert("❌ មានបញ្ហាបច្ចេកទេស! សូមព្យាយាមម្តងទៀត។");
     } finally {
       setLoading(false);
@@ -203,7 +225,12 @@ const Checkout = () => {
                 </div>
                 <label className="block p-4 border-2 border-dashed border-blue-200 rounded-2xl text-center cursor-pointer hover:bg-blue-50 transition-colors">
                   <input type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
-                  {previewUrl ? <img src={previewUrl} className="h-32 mx-auto rounded-lg shadow-md" alt="slip" /> : (
+                  {previewUrl ? (
+                    <div className="relative inline-block">
+                        <img src={previewUrl} className="h-32 mx-auto rounded-lg shadow-md" alt="slip" />
+                        <div className="mt-2 text-[10px] font-bold text-blue-500 uppercase">ចុចដើម្បីប្តូររូបភាព</div>
+                    </div>
+                  ) : (
                     <div className="text-blue-500 flex flex-col items-center gap-1 font-black text-[10px] uppercase">
                       <ImageIcon size={24}/> អាប់ឡូតរូបភាពវិក្កយបត្រ
                     </div>
