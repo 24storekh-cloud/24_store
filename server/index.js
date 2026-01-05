@@ -7,17 +7,18 @@ const axios = require('axios');
 const app = express();
 app.use(cors());
 
-// បង្កើនទំហំ Limit ដើម្បីឱ្យ JSON អាចផ្ទុកកូដរូបភាព Base64 បានច្រើន
+// សំខាន់៖ ត្រូវបង្កើន Limit ដើម្បីឱ្យ JSON ទទួលយកកូដរូបភាព Base64 វែងៗបាន
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 const DATA_FILE = 'data.json';
 const ORDERS_FILE = 'orders.json';
 
-// កំណត់ Multer ឱ្យទទួលរូបភាពទុកក្នុង Memory (មិនបង្កើត File ក្នុងម៉ាស៊ីនទេ)
-const upload = multer({ storage: multer.memoryStorage() });
+// កែសម្រួល Multer: ប្រើ MemoryStorage ដើម្បីបម្លែងរូបភាពជា Base64 ភ្លាមៗ
+const storage = multer.memoryStorage();
+const upload = multer({ storage });
 
-// --- មុខងារជំនួយសម្រាប់អាន/សរសេរ File JSON ---
+// --- មុខងារជំនួយសម្រាប់អាន/សរសេរ File JSON (រក្សានៅដដែល) ---
 const safeReadJSON = (filePath, defaultContent) => {
     try {
         if (!fs.existsSync(filePath)) return defaultContent;
@@ -32,7 +33,7 @@ const safeWriteJSON = (filePath, data) => {
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
 };
 
-// ================= 1. Telegram Notification =================
+// ================= 1. Telegram Notification (រក្សានៅដដែល) =================
 app.post('/api/send-telegram', async (req, res) => {
     try {
         const { message } = req.body;
@@ -50,7 +51,7 @@ app.post('/api/send-telegram', async (req, res) => {
     }
 });
 
-// ================= 2. Product Management (Base64 Mode) =================
+// ================= 2. Product Management (Fix Base64) =================
 app.get('/api/data', (req, res) => {
     const data = safeReadJSON(DATA_FILE, { products: [], banners: [] });
     const orders = safeReadJSON(ORDERS_FILE, []);
@@ -61,25 +62,34 @@ app.post('/api/upload', upload.array('images', 5), (req, res) => {
     const { type, name, price, cost, category, detail, title, stock } = req.body;
     let data = safeReadJSON(DATA_FILE, { products: [], banners: [] });
     
-    // បម្លែងរូបភាពទៅជា Base64 String
-    const imageUrls = req.files ? req.files.map(f => 
+    // បម្លែង File ទៅជា Base64 string
+    const base64Images = req.files ? req.files.map(f => 
         `data:${f.mimetype};base64,${f.buffer.toString('base64')}`
     ) : [];
 
     if (type === 'product') {
         data.products.push({
             id: Date.now(),
-            name, price: parseFloat(price), cost: parseFloat(cost),
-            category, detail, stock: parseInt(stock),
-            images: imageUrls
+            name, 
+            price: parseFloat(price), 
+            cost: parseFloat(cost),
+            category, 
+            detail, 
+            stock: parseInt(stock),
+            images: base64Images // ទុកក្នុង JSON ជាអក្សរ
         });
     } else {
-        data.banners.push({ id: Date.now(), title, image: imageUrls[0] || '' });
+        data.banners.push({ 
+            id: Date.now(), 
+            title, 
+            image: base64Images[0] || '' 
+        });
     }
     safeWriteJSON(DATA_FILE, data);
     res.json({ success: true });
 });
 
+// Fix ការ Update ឱ្យស្គាល់ Base64
 app.put('/api/update/:type/:id', upload.array('images', 5), (req, res) => {
     const { type, id } = req.params;
     let data = safeReadJSON(DATA_FILE, { products: [], banners: [] });
@@ -90,6 +100,7 @@ app.put('/api/update/:type/:id', upload.array('images', 5), (req, res) => {
         if (req.body.update_type === 'stock_only') {
             data.products[idx].stock = parseInt(req.body.stock);
         } else {
+            // បើមានរូបភាពថ្មី បម្លែងជា Base64 បើអត់ទេ ប្រើរូបភាពចាស់
             const newImages = req.files && req.files.length > 0 
                 ? req.files.map(f => `data:${f.mimetype};base64,${f.buffer.toString('base64')}`) 
                 : (type === 'product' ? data[col][idx].images : [data[col][idx].image]);
@@ -101,28 +112,28 @@ app.put('/api/update/:type/:id', upload.array('images', 5), (req, res) => {
     }
 });
 
-// ================= 3. Order Management =================
+// ================= 3. Order & Stock Management (Fix Base64) =================
 app.post('/api/orders', upload.single('payslip'), (req, res) => {
     try {
         const orderData = req.body;
+        // បម្លែង Payslip ជា Base64
         const payslipBase64 = req.file 
             ? `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}` 
             : null;
-        
-        const today = new Date().toISOString().split('T')[0];
+
         let orders = safeReadJSON(ORDERS_FILE, []);
-        
         const newOrder = {
             orderId: Date.now(),
             ...orderData,
             payslip: payslipBase64,
             status: 'Pending',
-            date: today
+            date: new Date().toISOString().split('T')[0]
         };
 
         orders.unshift(newOrder); 
         safeWriteJSON(ORDERS_FILE, orders);
 
+        // ការកាត់ស្តុក (រក្សាតាមកូដចាស់បង)
         if (orderData.productId) {
             let data = safeReadJSON(DATA_FILE, { products: [], banners: [] });
             const pIdx = data.products.findIndex(p => p.id.toString() === orderData.productId.toString());
@@ -137,6 +148,7 @@ app.post('/api/orders', upload.single('payslip'), (req, res) => {
     }
 });
 
+// Delete & Patch status (រក្សានៅដដែល)
 app.delete('/api/delete/:type/:id', (req, res) => {
     const { type, id } = req.params;
     let data = safeReadJSON(DATA_FILE, { products: [], banners: [] });
@@ -157,4 +169,4 @@ app.patch('/api/orders/:id/status', (req, res) => {
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`🚀 Base64 JSON Server Running on Port ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Server fully running with Base64 on port ${PORT}`));
