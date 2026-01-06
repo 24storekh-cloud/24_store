@@ -69,8 +69,8 @@ const Banner = () => {
   if (banners.length === 0) return null;
 
   return (
-    <div className="container mx-auto px-4 mb-8">
-      <div className="relative w-full h-[200px] md:h-[450px] overflow-hidden group rounded-[2rem] shadow-lg">
+    <div className="w-full px-2 md:px-5 lg:px-5 mt-2 md:mt-2 mb-8">
+      <div className="relative w-full h-[220px] md:h-[480px] overflow-hidden rounded-2xl shadow-lg">
         <div 
           className="flex w-full h-full transition-transform duration-700 ease-out" 
           style={{ transform: `translateX(-${currentIndex * 100}%)` }}
