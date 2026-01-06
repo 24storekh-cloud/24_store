@@ -4,18 +4,25 @@ const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
+const jwt = require('jsonwebtoken'); // បន្ថែមថ្មី
 require('dotenv').config();
 
 const app = express();
 
 // --- ១. Configuration ---
 app.use(cors());
-app.use(express.json({ limit: '50mb' })); // ចាំបាច់សម្រាប់ទទួល Base64 ធំៗ
+app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 const DATA_FILE = path.join(__dirname, 'data.json');
+const JWT_SECRET = "MY_SUPER_SECRET_KEY_2026"; // គន្លឹះសម្ងាត់សម្រាប់ Token
 
-// កំណត់ Multer ទុកក្នុង Memory (ដើម្បីបម្លែងទៅ Base64 ភ្លាមៗ)
+// កំណត់ Username/Password សម្រាប់ Login នៅទីនេះ
+const ADMIN_ACCOUNT = {
+    username: "admin",
+    password: "123"
+};
+
 const upload = multer({ storage: multer.memoryStorage() });
 
 // --- ២. Helper Functions ---
@@ -33,19 +40,51 @@ const writeData = (data) => {
     fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
 };
 
+// Middleware សម្រាប់ឆែក Token (ការពារ API Admin)
+const authenticateToken = (req, res, next) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+
+    if (!token) return res.status(401).json({ message: "ត្រូវការ Login ជាមុនសិន!" });
+
+    jwt.verify(token, JWT_SECRET, (err, user) => {
+        if (err) return res.status(403).json({ message: "Token មិនត្រឹមត្រូវ ឬហួសកំណត់!" });
+        req.user = user;
+        next();
+    });
+};
+
 // --- ៣. API Routes ---
 
-// Get All Data (Products, Banners, Orders)
+// ⚡ មុខងារ Login (សំខាន់៖ ដើម្បីបាត់ Error 404)
+app.post('/api/login', (req, res) => {
+    const { username, password } = req.body;
+
+    if (username === ADMIN_ACCOUNT.username && password === ADMIN_ACCOUNT.password) {
+        const token = jwt.sign({ user: username }, JWT_SECRET, { expiresIn: '24h' });
+        return res.json({ 
+            success: true, 
+            token: token, 
+            message: "ស្វាគមន៍មកកាន់ប្រព័ន្ធគ្រប់គ្រង!" 
+        });
+    } else {
+        return res.status(401).json({ 
+            success: false, 
+            message: "ឈ្មោះអ្នកប្រើ ឬលេខសម្ងាត់មិនត្រឹមត្រូវ!" 
+        });
+    }
+});
+
+// Get All Data (Public access for Client, Protected for Admin if needed)
 app.get('/api/data', (req, res) => {
     res.json(readData());
 });
 
-// Upload Product or Banner (Base64)
-app.post('/api/upload', upload.array('images', 5), (req, res) => {
+// Upload Product or Banner (Protected)
+app.post('/api/upload', authenticateToken, upload.array('images', 5), (req, res) => {
     const { type, name, price, cost, category, detail, stock, title } = req.body;
     const data = readData();
 
-    // បម្លែង Buffer ទៅជា Base64
     const base64Images = req.files ? req.files.map(f => 
         `data:${f.mimetype};base64,${f.buffer.toString('base64')}`
     ) : [];
@@ -59,7 +98,7 @@ app.post('/api/upload', upload.array('images', 5), (req, res) => {
             category,
             detail,
             stock: parseInt(stock || 0),
-            images: base64Images // រក្សាទុកក្នុង Array
+            images: base64Images
         });
     } else if (type === 'banner') {
         data.banners.push({
@@ -70,21 +109,19 @@ app.post('/api/upload', upload.array('images', 5), (req, res) => {
     }
 
     writeData(data);
-    res.json({ success: true, message: 'បានរក្សាទុកក្នុង data.json រួចរាល់' });
+    res.json({ success: true, message: 'Saved successfully' });
 });
 
-// Update Product (ស្ដុក ឬ ព័ត៌មានលម្អិត)
-app.put('/api/update/product/:id', upload.array('images', 5), (req, res) => {
+// Update Product (Protected)
+app.put('/api/update/product/:id', authenticateToken, upload.array('images', 5), (req, res) => {
     const { id } = req.params;
     const data = readData();
     const idx = data.products.findIndex(p => p.id === id);
 
     if (idx !== -1) {
-        // បើផ្ញើមកតែ Stock (សម្រាប់ប៊ូតុង + / - ក្នុង Table)
         if (req.body.stock !== undefined && Object.keys(req.body).length === 1) {
             data.products[idx].stock = parseInt(req.body.stock);
         } else {
-            // បើកែប្រែក្នុង Modal
             const newImages = req.files && req.files.length > 0 
                 ? req.files.map(f => `data:${f.mimetype};base64,${f.buffer.toString('base64')}`)
                 : data.products[idx].images;
@@ -92,19 +129,60 @@ app.put('/api/update/product/:id', upload.array('images', 5), (req, res) => {
             data.products[idx] = { 
                 ...data.products[idx], 
                 ...req.body, 
-                price: parseFloat(req.body.price),
-                cost: parseFloat(req.body.cost),
-                stock: parseInt(req.body.stock),
+                price: parseFloat(req.body.price || data.products[idx].price),
+                cost: parseFloat(req.body.cost || data.products[idx].cost),
+                stock: parseInt(req.body.stock || data.products[idx].stock),
                 images: newImages 
             };
         }
         writeData(data);
         return res.json({ success: true });
     }
-    res.status(404).json({ message: 'រកមិនឃើញទំនិញ' });
+    res.status(404).json({ message: 'Product not found' });
+});
+// បន្ថែម Route នេះនៅក្នុង File server.js ឬ index.js របស់បង
+app.patch('/api/orders/:id/status', (req, res) => {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    // ១. អានទិន្នន័យពី data.json
+    const data = readData(); 
+    
+    // ២. រកមើល Order ដែលត្រូវ Update
+    const orderIndex = data.orders.findIndex(o => o.id === id);
+
+    if (orderIndex !== -1) {
+        // ៣. Update status ថ្មី
+        data.orders[orderIndex].status = status;
+        
+        // ៤. រក្សាទុកចូលក្នុង data.json វិញ
+        writeData(data); 
+        
+        return res.json({ success: true, message: "Status updated successfully!" });
+    } else {
+        return res.status(404).json({ success: false, message: "Order not found!" });
+    }
+});
+// Reduce Stock (Public - used by Storefront)
+app.patch('/api/products/:id/reduce-stock', (req, res) => {
+    const { id } = req.params;
+    const data = readData();
+    const idx = data.products.findIndex(p => p.id === id);
+
+    if (idx !== -1) {
+        let currentStock = Number(data.products[idx].stock || 0);
+        if (currentStock > 0) {
+            data.products[idx].stock = currentStock - 1;
+            writeData(data);
+            return res.json({ success: true, newStock: data.products[idx].stock });
+        } else {
+            return res.status(400).json({ success: false, message: 'Out of stock' });
+        }
+    }
+    res.status(404).json({ message: 'Product not found' });
 });
 
-// Submit Order (ពីខាង Customer)
+// Submit Order (Public)
 app.post('/api/orders', upload.single('payslip'), (req, res) => {
     const data = readData();
     const payslipBase64 = req.file 
@@ -121,11 +199,11 @@ app.post('/api/orders', upload.single('payslip'), (req, res) => {
 
     data.orders.unshift(newOrder);
 
-    // កាត់ស្តុកភ្លាមៗ
     if (req.body.productId) {
         const pIdx = data.products.findIndex(p => p.id === req.body.productId);
         if (pIdx !== -1) {
-            data.products[pIdx].stock -= parseInt(req.body.qty || 1);
+            const qty = parseInt(req.body.qty || 1);
+            data.products[pIdx].stock = Math.max(0, data.products[pIdx].stock - qty);
         }
     }
 
@@ -133,31 +211,21 @@ app.post('/api/orders', upload.single('payslip'), (req, res) => {
     res.json({ success: true, orderId: newOrder.id });
 });
 
-// Update Order Status
-app.patch('/api/orders/:id/status', (req, res) => {
-    const data = readData();
-    const order = data.orders.find(o => o.id === req.params.id);
-    if (order) {
-        order.status = req.body.status;
-        writeData(data);
-        res.json({ success: true });
-    } else {
-        res.status(404).json({ message: 'Order not found' });
-    }
-});
-
-// Delete Item
-app.delete('/api/delete/:type/:id', (req, res) => {
+// Delete Item (Protected)
+app.delete('/api/delete/:type/:id', authenticateToken, (req, res) => {
     const { type, id } = req.params;
     const data = readData();
     const key = type === 'product' ? 'products' : (type === 'banner' ? 'banners' : 'orders');
 
-    data[key] = data[key].filter(item => item.id !== id);
-    writeData(data);
-    res.json({ success: true });
+    if (data[key]) {
+        data[key] = data[key].filter(item => item.id !== id);
+        writeData(data);
+        return res.json({ success: true });
+    }
+    res.status(404).json({ message: 'Type not found' });
 });
 
-// Telegram Notification (Optional)
+// Telegram Notification (Public)
 app.post('/api/send-telegram', async (req, res) => {
     try {
         const { message } = req.body;
@@ -176,4 +244,4 @@ app.post('/api/send-telegram', async (req, res) => {
 
 // --- ៤. Start Server ---
 const PORT = 5000;
-app.listen(PORT, () => console.log(`🚀 Base64 JSON Server running on port ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Admin Server running on port ${PORT}`));

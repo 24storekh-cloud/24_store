@@ -1,71 +1,72 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { Toaster } from 'react-hot-toast'; // បន្ថែមសម្រាប់ Pop-up alert ស្អាតៗ
+import { Toaster } from 'react-hot-toast';
 
 // --- Import Components ---
 import Navbar from './components/Navbar';
-import Footer from './components/Footer'; // បន្ថែម Footer ប្រសិនបើមាន
+import Footer from './components/Footer';
+import ScrollToTop from './components/ScrollToTop'; // ជំនួយការ Scroll ទៅលើវិញពេលប្តូរទំព័រ
 
 // --- Import Pages ---
 import Home from './pages/Home';
 import ProductDetail from './pages/ProductDetail';
 import Cart from './pages/Cart';
 import Checkout from './pages/Checkout';
-import SuccessPage from './pages/SuccessPage'; // ទំព័រជោគជ័យដែលទើបបង្កើត
-// import AdminDashboard from './pages/AdminDashboard'; // ប្រសិនបើអ្នកមានទំព័រ Admin
+import SuccessPage from './pages/SuccessPage';
 
-// --- Import Provider ---
+// --- Import Provider (សំខាន់បំផុតសម្រាប់ Add to Cart) ---
 import { CartProvider } from './context/CartContext';
 
 function App() {
   return (
+    // ១. CartProvider ត្រូវស្រោប Router ដើម្បីឱ្យគ្រប់ Route ស្គាល់ Cart ទាំងអស់
     <CartProvider>
       <Router>
-        {/* បន្ថែម Toaster នៅខាងលើបង្អស់ ដើម្បីបង្ហាញ Notification */}
-        <Toaster position="top-center" reverseOrder={false} />
+        {/* ២. ScrollToTop ជួយឱ្យពេលចុចដូរទំព័រ វារត់ទៅលើបំផុតវិញ */}
+        <ScrollToTop />
 
-        <div className="min-h-screen bg-[#F8FAFC] flex flex-col font-phetsarath selection:bg-blue-100">
+        {/* ៣. Toaster សម្រាប់បង្ហាញសារ Notification ពេល Add ទំនិញ */}
+        <Toaster 
+          position="top-center" 
+          toastOptions={{
+            duration: 3000,
+            style: {
+              borderRadius: '1.5rem',
+              background: '#1e293b',
+              color: '#fff',
+              fontSize: '14px',
+            },
+          }}
+        />
+
+        <div className="min-h-screen bg-[#F8FAFC] flex flex-col font-sans">
           
-          {/* ១. Navbar បង្ហាញនៅគ្រប់ទំព័រ */}
+          {/* ៤. Navbar នៅខាងលើគេជានិច្ច */}
           <Navbar />
 
-          {/* ២. តំបន់បង្ហាញខ្លឹមសារទំព័រ (Main Content Area) */}
+          {/* ៥. តំបន់បង្ហាញខ្លឹមសារទំព័រ (Main Content) */}
           <main className="flex-grow">
             <Routes>
-              {/* ទំព័រដើម */}
               <Route path="/" element={<Home />} />
-
-              {/* ទំព័រតាមប្រភេទផលិតផល */}
               <Route path="/category/:slug" element={<Home />} />
-
-              {/* ទំព័រព័ត៌មានលម្អិតផលិតផល (ដែលយើងបានធ្វើ Full Code អម្បាញ់មិញ) */}
               <Route path="/product/:id" element={<ProductDetail />} />
-
-              {/* ទំព័រកន្ត្រកទំនិញ */}
               <Route path="/cart" element={<Cart />} />
-
-              {/* ទំព័រ Checkout */}
               <Route path="/checkout" element={<Checkout />} />
-
-              {/* ៣. ទំព័រជោគជ័យ (ក្រោយកុម្ម៉ង់រួច) */}
               <Route path="/success" element={<SuccessPage />} />
-
-              {/* ៤. ទំព័រ Admin (សម្រាប់គ្រប់គ្រងស្តុក និង Order) */}
-              {/* <Route path="/admin-control-panel" element={<AdminDashboard />} /> */}
-
-              {/* ទំព័រ 404 (Optional) */}
+              
+              {/* ទំព័រ 404 ករណីរក Link មិនឃើញ */}
               <Route path="*" element={
-                <div className="h-[60vh] flex flex-col items-center justify-center italic font-black text-slate-300 uppercase">
-                  <h2 className="text-4xl">404</h2>
-                  <p>Page Not Found</p>
+                <div className="py-20 text-center uppercase tracking-widest text-slate-400">
+                  <h2 className="text-6xl font-black opacity-20">404</h2>
+                  <p>រកមិនឃើញទំព័រឡើយ</p>
+                  <a href="/" className="mt-4 inline-block px-6 py-2 bg-blue-600 text-white rounded-xl text-xs">ត្រឡប់ទៅដើម</a>
                 </div>
               } />
             </Routes>
           </main>
 
-          {/* ៥. Footer ផ្នែកខាងក្រោមនៃវេបសាយ */}
+          {/* ៦. Footer នៅខាងក្រោមគេជានិច្ច */}
           <Footer />
-
         </div>
       </Router>
     </CartProvider>

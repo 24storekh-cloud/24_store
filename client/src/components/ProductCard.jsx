@@ -1,65 +1,65 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import API_URL from '../apiConfig';
+import { ShoppingCart, Eye } from 'lucide-react';
+import toast from 'react-hot-toast';
 
-const ProductCard = ({ name, price, image }) => {
-  
+const ProductCard = ({ id, name, price, image, stock = 0, onAddToCart }) => {
+  const [localStock, setLocalStock] = useState(parseInt(stock) || 0);
+
+  useEffect(() => {
+    setLocalStock(parseInt(stock) || 0);
+  }, [stock]);
+
   const getImageUrl = (img) => {
-    // ១. ករណីគ្មានរូបភាព
     if (!img) return 'https://placehold.co/400x400?text=No+Image';
-
-    // ២. ករណីរូបភាពជា Array (យកតែរូបទី១)
     let finalImg = Array.isArray(img) ? img[0] : img;
-
-    if (typeof finalImg !== 'string') return 'https://placehold.co/400x400?text=Invalid+Data';
-
-    // ៣. បើជាប្រភេទ Base64 (data:image/...) ឱ្យវាបង្ហាញផ្ទាល់តែម្ដង
-    if (finalImg.startsWith('data:')) {
-      return finalImg;
-    }
-
-    // ៤. បើក្នុង Database ជាប់ localhost ត្រូវដូរទៅជា Link Render ភ្លាម
-    if (finalImg.includes('localhost:5000')) {
-      return finalImg.replace('http://localhost:5000', API_URL);
-    }
-
-    // ៥. បើជា Path ខ្លី (uploads/...) ត្រូវបន្ថែម API_URL
-    if (!finalImg.startsWith('http')) {
-      // លាងសញ្ញា / ដើម្បីកុំឱ្យជាន់គ្នា (ឧទាហរណ៍៖ ...com//uploads)
-      const baseUrl = API_URL.endsWith('/') ? API_URL.slice(0, -1) : API_URL;
-      const cleanPath = finalImg.startsWith('/') ? finalImg.slice(1) : finalImg;
-      return `${baseUrl}/${cleanPath}`;
-    }
-
-    return finalImg;
+    if (finalImg.startsWith('data:')) return finalImg;
+    const baseUrl = API_URL.endsWith('/') ? API_URL.slice(0, -1) : API_URL;
+    return finalImg.startsWith('http') ? finalImg : `${baseUrl}/${finalImg.replace(/^\//, '')}`;
   };
 
+  const handleAddToCartClick = (e) => {
+    e.preventDefault();
+    if (localStock > 0) {
+      // ហៅ Function ទៅកាន់ Home.jsx
+      if (onAddToCart) {
+        onAddToCart(); 
+      }
+      setLocalStock(prev => prev - 1);
+      toast.success(`បន្ថែម ${name} ជោគជ័យ!`);
+    } else {
+      toast.error("អស់ស្តុកហើយ!");
+    }
+  };
+
+  const isOutOfStock = localStock <= 0;
+
   return (
-    <div className="bg-white rounded-[2rem] p-4 shadow-sm border border-slate-100 group hover:shadow-xl transition-all duration-500 flex flex-col h-full">
+    <div className="bg-white rounded-[2rem] p-4 shadow-sm border border-slate-100 group flex flex-col h-full">
       <div className="relative h-48 mb-4 overflow-hidden rounded-[1.5rem] bg-slate-50">
-        <img 
-          src={getImageUrl(image)} 
-          alt={name} 
-          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" 
-          onError={(e) => { 
-            // បើនៅតែ Error ទៀត ដាក់រូប Not Found
-            if (e.target.src !== 'https://placehold.co/400x400?text=Image+Not+Found') {
-              e.target.src = 'https://placehold.co/400x400?text=Image+Not+Found'; 
-            }
-          }}
-        />
+        <img src={getImageUrl(image)} alt={name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+        <div className="absolute top-3 right-3 bg-slate-900/80 backdrop-blur-md px-2 py-1 rounded-lg text-white text-[10px] font-bold">
+          Stock: {localStock}
+        </div>
       </div>
       
-      <div className="px-2 pb-2 flex flex-col flex-grow">
-        <h3 className="font-bold text-slate-800 line-clamp-1 mb-1 group-hover:text-blue-600 transition-colors">
-          {name}
-        </h3>
-        <p className="text-blue-600 font-black text-xl">
-          ${Number(price).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-        </p>
-        
-        <div className="mt-auto pt-4">
-          <button className="w-full bg-slate-900 text-white py-3 rounded-2xl font-bold hover:bg-blue-600 transition-all shadow-lg shadow-slate-100 active:scale-95">
-            មើលលម្អិត
+      <div className="flex flex-col flex-grow">
+        <h3 className="font-bold text-slate-800 text-sm md:text-base line-clamp-1 italic uppercase">{name}</h3>
+        <p className="text-blue-600 font-black text-xl mb-4">${Number(price).toFixed(2)}</p>
+
+        <div className="mt-auto flex gap-2">
+          <Link to={`/product/${id}`} className="p-3 bg-slate-100 rounded-xl text-slate-500 hover:bg-slate-200 transition">
+            <Eye size={18} />
+          </Link>
+          <button 
+            onClick={handleAddToCartClick}
+            disabled={isOutOfStock}
+            className={`flex-1 py-3 rounded-xl font-bold text-[10px] uppercase tracking-wider flex items-center justify-center gap-2 transition ${
+              isOutOfStock ? 'bg-slate-100 text-slate-400' : 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-100'
+            }`}
+          >
+            <ShoppingCart size={16} /> {isOutOfStock ? 'Sold Out' : 'Add To Cart'}
           </button>
         </div>
       </div>

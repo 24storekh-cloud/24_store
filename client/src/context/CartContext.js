@@ -3,31 +3,39 @@ import React, { createContext, useState, useContext, useEffect } from 'react';
 const CartContext = createContext();
 
 export const CartProvider = ({ children }) => {
-  // ទាញយកទិន្នន័យពី LocalStorage បើមាន (ដើម្បីកុំឱ្យបាត់ទំនិញពេល Refresh page)
+  // ១. ទាញយកទិន្នន័យពី LocalStorage បើមាន (ដើម្បីកុំឱ្យបាត់ទំនិញពេល Refresh page)
   const [cartItems, setCartItems] = useState(() => {
-    const localData = localStorage.getItem('24store_cart');
-    return localData ? JSON.parse(localData) : [];
+    try {
+      const localData = localStorage.getItem('24store_cart');
+      return localData ? JSON.parse(localData) : [];
+    } catch (err) {
+      return [];
+    }
   });
 
-  // រក្សាទុកក្នុង LocalStorage រាល់ពេល cartItems ប្រែប្រួល
+  // ២. រក្សាទុកក្នុង LocalStorage រាល់ពេល cartItems ប្រែប្រួល
   useEffect(() => {
     localStorage.setItem('24store_cart', JSON.stringify(cartItems));
   }, [cartItems]);
 
-  // ១. មុខងារបន្ថែមទំនិញ (Add / Increase)
+  // ៣. មុខងារបន្ថែមទំនិញ (Add / Increase)
   const addToCart = (product) => {
+    if (!product || !product.id) return; // បញ្ឈប់បើគ្មាន ID
+
     setCartItems((prev) => {
       const isExist = prev.find(item => item.id === product.id);
       if (isExist) {
+        // បើមានរួចហើយ ថែមចំនួន +1
         return prev.map(item =>
           item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
         );
       }
-      return [...prev, { ...product, quantity: product.quantity || 1 }];
+      // បើមិនទាន់មាន ថែម Object ថ្មីចូល និងកំណត់ quantity: 1
+      return [...prev, { ...product, quantity: 1 }];
     });
   };
 
-  // ២. មុខងារបន្ថយចំនួនទំនិញ (Decrease)
+  // ៤. មុខងារបន្ថយចំនួនទំនិញ (Decrease)
   const decreaseQuantity = (id) => {
     setCartItems((prev) =>
       prev.map((item) =>
@@ -36,17 +44,18 @@ export const CartProvider = ({ children }) => {
     );
   };
 
-  // ៣. មុខងារលុបទំនិញចេញពីកន្ត្រក (Remove)
+  // ៥. មុខងារលុបទំនិញចេញពីកន្ត្រក (Remove)
   const removeFromCart = (id) => {
     setCartItems((prev) => prev.filter(item => item.id !== id));
   };
 
-  // ៤. មុខងារលុបសម្អាតកន្ត្រកទាំងមូល (Clear Cart - ប្រើក្រោយពេល Checkout ជោគជ័យ)
+  // ៦. មុខងារលុបសម្អាតកន្ត្រកទាំងមូល (Clear Cart - ប្រើក្រោយពេល Checkout ជោគជ័យ)
   const clearCart = () => {
     setCartItems([]);
+    localStorage.removeItem('24store_cart');
   };
 
-  // ៥. គណនាចំនួនទំនិញសរុប (Total Items Count)
+  // ៧. គណនាចំនួនទំនិញសរុប (Total Items Count)
   const totalItems = cartItems.reduce((sum, item) => sum + item.quantity, 0);
 
   return (
@@ -64,4 +73,10 @@ export const CartProvider = ({ children }) => {
 };
 
 // Custom Hook សម្រាប់ងាយស្រួលហៅប្រើ
-export const useCart = () => useContext(CartContext);
+export const useCart = () => {
+  const context = useContext(CartContext);
+  if (!context) {
+    throw new Error('useCart must be used within a CartProvider');
+  }
+  return context;
+};
